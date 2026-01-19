@@ -1,6 +1,6 @@
 {
-  "name": "personnalsite",
-  "main": "pdfs.js",
+  "name": "vault",
+  "main": "worker.js",
   "compatibility_date": "2024-09-23",
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "my-pdfs" }
@@ -11,5 +11,8 @@
       "database_name": "pdfs",
       "database_id": "c2e90b66-e4bf-43b7-859f-a452650f94ec"
     }
+  ],
+  "routes": [
+    { "pattern": "111iridescence.org/vault*", "zone_name": "111iridescence.org" }
   ]
 }
