@@ -1,6 +1,6 @@
 /**
  * CORRECTED SECURE PDF SYSTEM
- * Fixes: UTF-8 Encoding, User Management (Update/Create), and Visuals
+ * Fixes: JavaScript Naming Conflicts (User Creation), UTF-8, and Permissions
  */
 
 export default {
@@ -15,7 +15,6 @@ export default {
 
     if (sessionId) {
       try {
-        // Check session validity
         const session = await env.DB.prepare('SELECT * FROM sessions WHERE id = ? AND expires > ?').bind(sessionId, Date.now()).first();
         if (session) user = session;
       } catch (e) { console.error("Session DB Error:", e); }
@@ -32,7 +31,6 @@ export default {
         
         if (!dbUser) return new Response('Invalid credentials', { status: 401 });
 
-        // Create Session
         const newSess = crypto.randomUUID();
         await env.DB.prepare('INSERT INTO sessions (id, username, role, expires) VALUES (?, ?, ?, ?)').bind(newSess, dbUser.username, dbUser.role, Date.now() + 86400000).run();
 
@@ -60,7 +58,6 @@ export default {
       if (!filename) return new Response("Missing name", { status: 400 });
 
       try {
-        // Enforce basic ASCII names to prevent encoding weirdness in URLs
         const safeName = filename.replace(/[^\x00-\x7F]/g, ""); 
         await env.BUCKET.put(safeName, req.body, {
           customMetadata: { uploader: user.username, role: user.role }
@@ -99,7 +96,7 @@ export default {
         const action = fd.get('action');
 
         if (action === 'create') {
-          // INSERT OR REPLACE allows you to UPDATE the password if user exists
+          // INSERT OR REPLACE = Créer ou Mettre à jour (Modify)
           const hashPw = await hash(fd.get('p'));
           await env.DB.prepare('INSERT OR REPLACE INTO users (username, password, role) VALUES (?, ?, ?)').bind(fd.get('u'), hashPw, fd.get('r')).run();
         }
@@ -125,7 +122,6 @@ export default {
 
         let userList = [];
         if (user.role === 'admin') {
-          // Wrap in try-catch in case table doesn't exist yet
           try {
              const { results } = await env.DB.prepare('SELECT username, role FROM users').all();
              userList = results;
@@ -133,7 +129,7 @@ export default {
         }
 
         return new Response(renderDash(user, files, userList), { 
-          headers: { 'Content-Type': 'text/html; charset=utf-8' } // FIX: Forces UTF-8
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
       } catch (e) { return new Response("Render Error: " + e.message, { status: 500 }); }
     }
@@ -147,7 +143,7 @@ export default {
        const h = new Headers(); 
        obj.writeHttpMetadata(h); 
        h.set('etag', obj.httpEtag);
-       h.set('Content-Type', 'application/pdf'); // Force PDF type
+       h.set('Content-Type', 'application/pdf');
        return new Response(obj.body, { headers: h });
     }
 
@@ -183,7 +179,7 @@ function renderLogin() {
   <body style="display:flex;justify-content:center;align-items:center;height:100vh">
     <div class="card" style="width:300px;text-align:center">
       <h2>🔐 Secure Access</h2>
-      <form onsubmit="event.preventDefault();l(this)">
+      <form onsubmit="event.preventDefault();doLogin(this)">
         <input type="text" name="u" placeholder="Username" required style="width:90%"><br>
         <input type="password" name="p" placeholder="Password" required style="width:90%"><br>
         <button style="width:100%">LOGIN</button>
@@ -191,7 +187,7 @@ function renderLogin() {
       <div id="msg" style="margin-top:10px;color:var(--err)"></div>
     </div>
     <script>
-      async function l(f){
+      async function doLogin(f){
         const res = await fetch('/login',{method:'POST',body:new FormData(f)});
         if(res.ok) location.reload(); 
         else document.getElementById('msg').innerText = "Access Denied";
@@ -204,7 +200,6 @@ function renderDash(user, files, users) {
   const isAdm = user.role === 'admin';
   const canUp = user.role !== 'guest';
 
-  // File List Logic
   const fileRows = files.map(f => {
     let canDel = false;
     if (isAdm) canDel = true;
@@ -219,34 +214,34 @@ function renderDash(user, files, users) {
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <small style="color:#666">${(f.size/1024).toFixed(1)} KB</small>
-        ${canDel ? `<button onclick="del('${f.key}')" style="background:var(--err);padding:2px 8px;font-size:12px">✕</button>` : ''}
+        ${canDel ? `<button onclick="delFile('${f.key}')" style="background:var(--err);padding:2px 8px;font-size:12px">✕</button>` : ''}
       </div>
     </div>`;
   }).join('') || '<p style="text-align:center;color:#666">No files yet.</p>';
 
-  // Admin User Panel
+  // --- CORRECTION ICI : Changement du nom de la fonction u() -> saveUser() ---
   const userPanel = isAdm ? `
   <div class="card">
     <h3>👥 User Management</h3>
-    <p><small style="color:#888">To change a password, just create the user again with the new password.</small></p>
-    <form onsubmit="event.preventDefault();u(this)" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:5px">
+    <p><small style="color:#888">To change a password, simply create the user again.</small></p>
+    
+    <form onsubmit="event.preventDefault();saveUser(this)" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:5px">
       <input type="hidden" name="action" value="create">
-      <input type="text" name="u" placeholder="Username" required>
-      <input type="password" name="p" placeholder="Password" required>
+      <input type="text" name="u" placeholder="Username" required> <input type="password" name="p" placeholder="Password" required>
       <select name="r"><option value="guest">Guest</option><option value="guest+">Guest +</option><option value="admin">Admin</option></select>
       <button>Save</button>
     </form>
+    
     <hr style="border:0;border-top:1px solid #333;margin:15px 0">
     <div style="max-height:150px;overflow-y:auto">
     ${users.map(u => `
       <div class="row" style="padding:5px 0">
         <small>${u.username} <span style="color:#666">(${u.role})</span></small> 
-        ${u.username!=='admin'?`<button onclick="kill('${u.username}')" style="background:#333;color:#fff;font-size:10px">✕</button>`:''}
+        ${u.username!=='admin'?`<button onclick="deleteUser('${u.username}')" style="background:#333;color:#fff;font-size:10px">✕</button>`:''}
       </div>`).join('')}
     </div>
   </div>` : '';
 
-  // Upload Panel
   const uploadPanel = canUp ? `
   <div class="card">
     <h3>📤 Upload PDF</h3>
@@ -254,7 +249,7 @@ function renderDash(user, files, users) {
     <div class="bar-wrap"><div id="pb" class="bar"></div></div>
     <div style="display:flex;justify-content:space-between;margin-top:10px">
       <small id="st">Ready</small>
-      <button onclick="up()">Start Upload</button>
+      <button onclick="uploadFile()">Start Upload</button>
     </div>
   </div>` : '';
 
@@ -277,7 +272,8 @@ function renderDash(user, files, users) {
     </div>
 
     <script>
-      function up() {
+      // 1. Upload Function
+      function uploadFile() {
         const f = document.getElementById('f').files[0];
         if(!f) return alert('Select file');
         
@@ -301,13 +297,15 @@ function renderDash(user, files, users) {
         xhr.send(f);
       }
 
-      async function del(key) {
+      // 2. Delete File Function
+      async function delFile(key) {
         if(!confirm('Delete ' + key + '?')) return;
         const res = await fetch('/api/delete/' + encodeURIComponent(key));
         if(res.ok) location.reload(); else alert('Permission Denied');
       }
 
-      async function u(form) {
+      // 3. User Management Functions (RENAMED TO FIX BUG)
+      async function saveUser(form) {
         const res = await fetch('/api/users', {method:'POST', body:new FormData(form)});
         if(res.ok) {
            location.reload();
@@ -317,7 +315,7 @@ function renderDash(user, files, users) {
         }
       }
 
-      async function kill(name) {
+      async function deleteUser(name) {
         if(!confirm('Remove user ' + name + '?')) return;
         const fd = new FormData(); fd.append('action','delete'); fd.append('u', name);
         await fetch('/api/users', {method:'POST', body:fd});
