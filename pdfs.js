@@ -1,6 +1,6 @@
 /**
  * CORRECTED SECURE PDF SYSTEM
- * Fixes: JavaScript Naming Conflicts (User Creation), UTF-8, and Permissions
+ * Fixes: Metadata retrieval (The "?" bug), Name Conflicts, UTF-8, Permissions
  */
 
 export default {
@@ -69,6 +69,7 @@ export default {
     // API: DELETE
     if (url.pathname.startsWith('/api/delete/')) {
       const fname = decodeURIComponent(url.pathname.replace('/api/delete/', ''));
+      // IMPORTANT: On doit récupérer les métadonnées ici aussi pour vérifier les permissions
       const obj = await env.BUCKET.head(fname);
       
       if (!obj) return new Response("Not found", { status: 404 });
@@ -87,7 +88,7 @@ export default {
       return new Response("Deleted");
     }
 
-    // API: USER MANAGEMENT (Admin Only)
+    // API: USER MANAGEMENT
     if (url.pathname === '/api/users' && method === 'POST') {
       if (user.role !== 'admin') return new Response("Forbidden", { status: 403 });
       
@@ -96,7 +97,6 @@ export default {
         const action = fd.get('action');
 
         if (action === 'create') {
-          // INSERT OR REPLACE = Créer ou Mettre à jour (Modify)
           const hashPw = await hash(fd.get('p'));
           await env.DB.prepare('INSERT OR REPLACE INTO users (username, password, role) VALUES (?, ?, ?)').bind(fd.get('u'), hashPw, fd.get('r')).run();
         }
@@ -112,11 +112,15 @@ export default {
     // --- 4. RENDER DASHBOARD ---
     if (url.pathname === '/') {
       try {
-        const list = await env.BUCKET.list();
+        // --- FIX ICI : on ajoute { include: ['customMetadata'] } ---
+        // Sans ça, Cloudflare ne renvoie pas les infos 'uploader' et 'role'
+        const list = await env.BUCKET.list({ include: ['customMetadata'] });
+        
         const files = list.objects.map(o => ({
           key: o.key,
           size: o.size,
-          uploader: o.customMetadata?.uploader || '?',
+          // Si c'est un vieux fichier sans métadonnées, on affiche '?' ou rien
+          uploader: o.customMetadata?.uploader || '?', 
           role: o.customMetadata?.role || '?'
         }));
 
@@ -206,11 +210,16 @@ function renderDash(user, files, users) {
     else if (user.role === 'guest+' && f.role !== 'admin') canDel = true;
     else if (user.role === 'guest+' && f.uploader === user.username) canDel = true;
 
+    // Si l'uploader est '?' (vieux fichier), on n'affiche pas le tag pour que ce soit plus propre
+    const tagHtml = f.uploader !== '?' 
+      ? `<span class="tag ${f.role === 'admin' ? 'admin' : 'guest+'}">${f.uploader}</span>` 
+      : `<span class="tag" style="background:#444;color:#aaa">Legacy</span>`;
+
     return `
     <div class="row">
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80%">
         <a href="/file/${encodeURIComponent(f.key)}" target="_blank">📄 ${f.key}</a>
-        <span class="tag ${f.role === 'admin' ? 'admin' : 'guest+'}">${f.uploader}</span>
+        ${tagHtml}
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <small style="color:#666">${(f.size/1024).toFixed(1)} KB</small>
@@ -219,7 +228,6 @@ function renderDash(user, files, users) {
     </div>`;
   }).join('') || '<p style="text-align:center;color:#666">No files yet.</p>';
 
-  // --- CORRECTION ICI : Changement du nom de la fonction u() -> saveUser() ---
   const userPanel = isAdm ? `
   <div class="card">
     <h3>👥 User Management</h3>
@@ -227,7 +235,8 @@ function renderDash(user, files, users) {
     
     <form onsubmit="event.preventDefault();saveUser(this)" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:5px">
       <input type="hidden" name="action" value="create">
-      <input type="text" name="u" placeholder="Username" required> <input type="password" name="p" placeholder="Password" required>
+      <input type="text" name="u" placeholder="Username" required>
+      <input type="password" name="p" placeholder="Password" required>
       <select name="r"><option value="guest">Guest</option><option value="guest+">Guest +</option><option value="admin">Admin</option></select>
       <button>Save</button>
     </form>
@@ -272,7 +281,6 @@ function renderDash(user, files, users) {
     </div>
 
     <script>
-      // 1. Upload Function
       function uploadFile() {
         const f = document.getElementById('f').files[0];
         if(!f) return alert('Select file');
@@ -297,14 +305,12 @@ function renderDash(user, files, users) {
         xhr.send(f);
       }
 
-      // 2. Delete File Function
       async function delFile(key) {
         if(!confirm('Delete ' + key + '?')) return;
         const res = await fetch('/api/delete/' + encodeURIComponent(key));
         if(res.ok) location.reload(); else alert('Permission Denied');
       }
 
-      // 3. User Management Functions (RENAMED TO FIX BUG)
       async function saveUser(form) {
         const res = await fetch('/api/users', {method:'POST', body:new FormData(form)});
         if(res.ok) {
