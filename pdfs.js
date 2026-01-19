@@ -1,6 +1,6 @@
 /**
- * CORRECTED SECURE PDF SYSTEM
- * Fixes: Metadata retrieval (The "?" bug), Name Conflicts, UTF-8, Permissions
+ * FINAL SECURE VAULT SYSTEM
+ * Features: Auto-Renaming (collision handling), Granular Permissions, Role Management
  */
 
 export default {
@@ -50,39 +50,73 @@ export default {
     // --- 3. PROTECTED ROUTES ---
     if (!user) return new Response(renderLogin(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
-    // API: UPLOAD
+    // API: UPLOAD (Avec Renommage + Vérification Type)
     if (url.pathname === '/api/upload' && method === 'POST') {
-      if (user.role === 'guest') return new Response("Guests cannot upload", { status: 403 });
+      
+      const originalName = req.headers.get('X-File-Name');
+      if (!originalName) return new Response("Missing name", { status: 400 });
 
-      const filename = req.headers.get('X-File-Name');
-      if (!filename) return new Response("Missing name", { status: 400 });
+      // 1. Vérification du type de fichier pour 'Guest'
+      const isPdf = originalName.toLowerCase().endsWith('.pdf');
+      if (user.role === 'guest' && !isPdf) {
+        return new Response("Guest users can only upload PDF files.", { status: 403 });
+      }
 
       try {
-        const safeName = filename.replace(/[^\x00-\x7F]/g, ""); 
-        await env.BUCKET.put(safeName, req.body, {
+        // Nettoyage basique du nom
+        let safeName = originalName.replace(/[^\x00-\x7F]/g, "").trim(); 
+        
+        // 2. Logique de Renommage (Collision) : file.txt -> file (1).txt
+        let finalName = safeName;
+        let counter = 1;
+
+        while (true) {
+          const existing = await env.BUCKET.head(finalName);
+          if (!existing) break; // Le nom est libre, on sort de la boucle
+
+          // On sépare le nom et l'extension pour insérer le (1)
+          const dotIndex = safeName.lastIndexOf('.');
+          if (dotIndex !== -1) {
+            const namePart = safeName.substring(0, dotIndex);
+            const extPart = safeName.substring(dotIndex);
+            finalName = `${namePart} (${counter})${extPart}`;
+          } else {
+            finalName = `${safeName} (${counter})`;
+          }
+          counter++;
+        }
+
+        // 3. Sauvegarde dans R2
+        await env.BUCKET.put(finalName, req.body, {
           customMetadata: { uploader: user.username, role: user.role }
         });
         return new Response("OK");
+
       } catch (e) { return new Response("Upload Failed: " + e.message, { status: 500 }); }
     }
 
-    // API: DELETE
+    // API: DELETE (Permissions strictes)
     if (url.pathname.startsWith('/api/delete/')) {
       const fname = decodeURIComponent(url.pathname.replace('/api/delete/', ''));
-      // IMPORTANT: On doit récupérer les métadonnées ici aussi pour vérifier les permissions
       const obj = await env.BUCKET.head(fname);
       
       if (!obj) return new Response("Not found", { status: 404 });
 
-      const fileRole = obj.customMetadata?.role || 'guest';
       const fileOwner = obj.customMetadata?.uploader || '';
 
+      // Règle : Admin supprime tout, les autres ne suppriment que leurs propres fichiers
       let canDelete = false;
-      if (user.role === 'admin') canDelete = true; 
-      else if (user.role === 'guest+' && fileRole !== 'admin') canDelete = true;
-      else if (user.role === 'guest+' && fileOwner === user.username) canDelete = true;
+      
+      if (user.role === 'admin') {
+        canDelete = true;
+      } else {
+        // Guest et Guest+ : Uniquement si c'est LEUR fichier
+        if (fileOwner === user.username) {
+          canDelete = true;
+        }
+      }
 
-      if (!canDelete) return new Response("Permission Denied", { status: 403 });
+      if (!canDelete) return new Response("Permission Denied: You can only delete your own files.", { status: 403 });
 
       await env.BUCKET.delete(fname);
       return new Response("Deleted");
@@ -112,14 +146,11 @@ export default {
     // --- 4. RENDER DASHBOARD ---
     if (url.pathname === '/') {
       try {
-        // --- FIX ICI : on ajoute { include: ['customMetadata'] } ---
-        // Sans ça, Cloudflare ne renvoie pas les infos 'uploader' et 'role'
         const list = await env.BUCKET.list({ include: ['customMetadata'] });
         
         const files = list.objects.map(o => ({
           key: o.key,
           size: o.size,
-          // Si c'est un vieux fichier sans métadonnées, on affiche '?' ou rien
           uploader: o.customMetadata?.uploader || '?', 
           role: o.customMetadata?.role || '?'
         }));
@@ -147,7 +178,15 @@ export default {
        const h = new Headers(); 
        obj.writeHttpMetadata(h); 
        h.set('etag', obj.httpEtag);
-       h.set('Content-Type', 'application/pdf');
+       
+       // Détection basique du Content-Type pour l'affichage navigateur
+       let type = 'application/octet-stream';
+       if(fname.endsWith('.pdf')) type = 'application/pdf';
+       else if(fname.endsWith('.jpg') || fname.endsWith('.png')) type = 'image/' + fname.split('.').pop();
+       else if(fname.endsWith('.txt')) type = 'text/plain';
+       
+       h.set('Content-Type', type);
+       
        return new Response(obj.body, { headers: h });
     }
 
@@ -202,15 +241,17 @@ function renderLogin() {
 
 function renderDash(user, files, users) {
   const isAdm = user.role === 'admin';
-  const canUp = user.role !== 'guest';
+  const isGuestPlus = user.role === 'guest+';
+  
+  // Règle d'upload : Seul Guest est restreint au PDF
+  const acceptAttr = user.role === 'guest' ? 'accept=".pdf"' : ''; 
 
   const fileRows = files.map(f => {
+    // Règle de suppression : Admin OU Propriétaire du fichier
     let canDel = false;
     if (isAdm) canDel = true;
-    else if (user.role === 'guest+' && f.role !== 'admin') canDel = true;
-    else if (user.role === 'guest+' && f.uploader === user.username) canDel = true;
+    else if (f.uploader === user.username) canDel = true;
 
-    // Si l'uploader est '?' (vieux fichier), on n'affiche pas le tag pour que ce soit plus propre
     const tagHtml = f.uploader !== '?' 
       ? `<span class="tag ${f.role === 'admin' ? 'admin' : 'guest+'}">${f.uploader}</span>` 
       : `<span class="tag" style="background:#444;color:#aaa">Legacy</span>`;
@@ -231,18 +272,14 @@ function renderDash(user, files, users) {
   const userPanel = isAdm ? `
   <div class="card">
     <h3>👥 User Management</h3>
-    <p><small style="color:#888">To change a password, simply create the user again.</small></p>
-    
     <form onsubmit="event.preventDefault();saveUser(this)" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:5px">
       <input type="hidden" name="action" value="create">
       <input type="text" name="u" placeholder="Username" required>
       <input type="password" name="p" placeholder="Password" required>
-      <select name="r"><option value="guest">Guest</option><option value="guest+">Guest +</option><option value="admin">Admin</option></select>
+      <select name="r"><option value="guest">Guest (PDF only)</option><option value="guest+">Guest + (All files)</option><option value="admin">Admin</option></select>
       <button>Save</button>
     </form>
-    
-    <hr style="border:0;border-top:1px solid #333;margin:15px 0">
-    <div style="max-height:150px;overflow-y:auto">
+    <div style="max-height:150px;overflow-y:auto;margin-top:10px">
     ${users.map(u => `
       <div class="row" style="padding:5px 0">
         <small>${u.username} <span style="color:#666">(${u.role})</span></small> 
@@ -251,16 +288,16 @@ function renderDash(user, files, users) {
     </div>
   </div>` : '';
 
-  const uploadPanel = canUp ? `
+  const uploadPanel = `
   <div class="card">
-    <h3>📤 Upload PDF</h3>
-    <input type="file" id="f" accept=".pdf">
+    <h3>📤 Upload ${user.role === 'guest' ? '(PDF Only)' : '(All Files)'}</h3>
+    <input type="file" id="f" ${acceptAttr}>
     <div class="bar-wrap"><div id="pb" class="bar"></div></div>
     <div style="display:flex;justify-content:space-between;margin-top:10px">
       <small id="st">Ready</small>
       <button onclick="uploadFile()">Start Upload</button>
     </div>
-  </div>` : '';
+  </div>`;
 
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault</title><style>${CSS}</style></head>
   <body>
@@ -308,7 +345,7 @@ function renderDash(user, files, users) {
       async function delFile(key) {
         if(!confirm('Delete ' + key + '?')) return;
         const res = await fetch('/api/delete/' + encodeURIComponent(key));
-        if(res.ok) location.reload(); else alert('Permission Denied');
+        if(res.ok) location.reload(); else alert('Permission Denied: ' + await res.text());
       }
 
       async function saveUser(form) {
