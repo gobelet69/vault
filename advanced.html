@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>OS-14K AUDIO FIX</title>
+<style>
+/* --- CORE & THEME --- */
+:root{--bg:#050505;--win:#111;--hi:#0f0;--bd:#333;--txt:#ccc;--font:monospace}
+body{background:var(--bg);color:var(--txt);font-family:var(--font);margin:0;overflow:hidden;height:100vh;user-select:none;touch-action:none}
+
+/* UI ELEMENTS */
+#desk{position:relative;width:100%;height:calc(100% - 50px);background:radial-gradient(circle at center,#222 0,#000 100%)}
+#task{height:50px;background:#0d0d0d;border-top:1px solid #333;display:flex;align-items:center;padding:0 10px;gap:10px;z-index:9999;overflow-x:auto}
+.icon{flex:0 0 auto;padding:0 15px;height:34px;background:#1a1a1a;border:1px solid #444;color:var(--hi);display:flex;align-items:center;cursor:pointer;font-size:11px;font-weight:bold;transition:0.2s}
+.icon:hover, .icon:active{background:var(--hi);color:#000;box-shadow:0 0 10px var(--hi)}
+
+/* WINDOWS */
+.win{position:absolute;background:var(--win);border:1px solid var(--bd);box-shadow:0 20px 60px #000;display:flex;flex-direction:column;min-width:300px;min-height:250px;transition: transform 0.1s, width 0.2s, height 0.2s, top 0.2s, left 0.2s}
+.win.active{border-color:var(--hi);z-index:100;box-shadow:0 0 15px rgba(0,255,0,0.1)}
+.win.max{top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:999;border:0}
+
+.bar{background:#181818;padding:8px 10px;cursor:move;display:flex;justify-content:space-between;border-bottom:1px solid #333}
+.bar strong{color:#fff;font-size:12px;text-transform:uppercase;letter-spacing:1px}
+.ctrls span{cursor:pointer;margin-left:15px;font-weight:bold;color:#666;font-size:14px;padding:5px}
+.ctrls span:hover{color:var(--hi)}
+.content{flex:1;position:relative;background:#000;display:flex;flex-direction:column;overflow:hidden}
+.view{flex:1;position:relative;overflow:hidden}
+canvas{display:block;width:100%;height:100%;image-rendering:pixelated} 
+
+/* APP CONTROLS */
+.opts{padding:10px;background:#111;border-top:1px solid #333;display:flex;gap:10px;align-items:center;font-size:11px;flex-wrap:wrap}
+.opts label{color:#666}
+input[type=range]{flex:1;min-width:60px;accent-color:var(--hi)}
+button.act{background:var(--hi);color:#000;border:0;padding:6px 12px;cursor:pointer;font-weight:bold;font-size:11px;border-radius:2px}
+.dpad {display:flex; gap:5px;} .dpad button { min-width:30px; }
+
+/* APP SPECIFIC UI */
+.vis-wrap{height:60px;border-bottom:1px solid #333;background:#080808}
+.seq-grid{display:grid;grid-template-columns:30px repeat(8,1fr);gap:2px;flex:1;padding:10px;overflow:auto}
+.note{background:#222;border:1px solid #333;cursor:pointer}
+.note.on{background:var(--hi);box-shadow:0 0 5px var(--hi)}
+.note.hit{background:#fff!important}
+.pal{display:flex;gap:5px} .sw{width:20px;height:20px;border:1px solid #555;cursor:pointer}
+
+/* --- REACTIVE / MOBILE CSS --- */
+@media (max-width: 600px) {
+    .win { top:0!important; left:0!important; width:100%!important; height:100%!important; border:none; }
+    .win.min { display:none !important; }
+    .bar { cursor: default; }
+    .ctrls { display: none; }
+    .icon { font-size: 10px; padding: 0 10px; }
+    #clk { display: none; }
+    .opts { padding: 15px; justify-content: center; } 
+}
+</style>
+</head>
+<body>
+
+<div id="desk">
+    <div class="win" id="w-ray" style="top:20px;left:20px;width:380px;height:320px">
+        <div class="bar"><strong>Wolfram-3D</strong><div class="ctrls"><span onclick="WM.max('w-ray')">□</span><span onclick="WM.min('w-ray')">_</span></div></div>
+        <div class="content">
+            <div class="view"><canvas id="c-ray"></canvas></div>
+            <div class="opts">
+                <div class="dpad">
+                    <button class="act" onmousedown="Ray.k['ArrowLeft']=1" onmouseup="Ray.k['ArrowLeft']=0" ontouchstart="Ray.k['ArrowLeft']=1" ontouchend="Ray.k['ArrowLeft']=0">←</button>
+                    <button class="act" onmousedown="Ray.k['ArrowUp']=1" onmouseup="Ray.k['ArrowUp']=0" ontouchstart="Ray.k['ArrowUp']=1" ontouchend="Ray.k['ArrowUp']=0">↑</button>
+                    <button class="act" onmousedown="Ray.k['ArrowDown']=1" onmouseup="Ray.k['ArrowDown']=0" ontouchstart="Ray.k['ArrowDown']=1" ontouchend="Ray.k['ArrowDown']=0">↓</button>
+                    <button class="act" onmousedown="Ray.k['ArrowRight']=1" onmouseup="Ray.k['ArrowRight']=0" ontouchstart="Ray.k['ArrowRight']=1" ontouchend="Ray.k['ArrowRight']=0">→</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="win" id="w-seq" style="top:20px;left:420px;width:400px;height:350px">
+        <div class="bar"><strong>Sonic-8</strong><div class="ctrls"><span onclick="WM.max('w-seq')">□</span><span onclick="WM.min('w-seq')">_</span></div></div>
+        <div class="content">
+            <div class="vis-wrap"><canvas id="c-vis"></canvas></div>
+            <div class="seq-grid" id="sg"></div>
+            <div class="opts">
+                <button class="act" id="btn-seq" onclick="Seq.tog()">► INIT</button>
+                <input type="range" min="100" max="600" value="250" oninput="Seq.bpm=this.value">
+                <select onchange="Seq.type=this.value" style="background:#000;color:#fff;border:1px solid #444;padding:5px">
+                    <option value="square">Sqr</option><option value="sawtooth">Saw</option><option value="triangle">Tri</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="win" id="w-pnt" style="top:350px;left:20px;width:300px;height:250px">
+        <div class="bar"><strong>Pixel-Draw</strong><div class="ctrls"><span onclick="WM.max('w-pnt')">□</span><span onclick="WM.min('w-pnt')">_</span></div></div>
+        <div class="content">
+            <div class="view"><canvas id="c-pnt"></canvas></div>
+            <div class="opts">
+                <div class="pal" id="pal"></div>
+                <button class="act" onclick="Pnt.clr()" style="margin-left:auto">CLR</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="win" id="w-phy" style="top:350px;left:340px;width:300px;height:250px">
+        <div class="bar"><strong>Phys-X</strong><div class="ctrls"><span onclick="WM.max('w-phy')">□</span><span onclick="WM.min('w-phy')">_</span></div></div>
+        <div class="content">
+            <div class="view"><canvas id="c-phy"></canvas></div>
+            <div class="opts">
+                <label>G:</label><input type="range" min="0" max="20" value="5" oninput="Phy.g=this.value/10">
+                <label>B:</label><input type="range" min="1" max="15" value="9" oninput="Phy.b=this.value/10">
+                <button class="act" onclick="Phy.o=[]">RST</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="task">
+    <div class="icon" onclick="WM.tog('w-ray')">DOOM</div>
+    <div class="icon" onclick="WM.tog('w-seq')">SONIC</div>
+    <div class="icon" onclick="WM.tog('w-pnt')">PAINT</div>
+    <div class="icon" onclick="WM.tog('w-phy')">PHYS</div>
+    <div style="margin-left:auto;font-size:10px;color:#666;padding-right:10px" id="clk"></div>
+</div>
+
+<script>
+const $ = i => document.getElementById(i);
+
+/* --- WINDOW MANAGER --- */
+const WM = {
+    top: 100, drag: null, off: {x:0,y:0},
+    init() {
+        document.querySelectorAll('.win').forEach(w => {
+            w.onmousedown = () => { w.classList.add('active'); w.style.zIndex = ++this.top; };
+            w.ontouchstart = () => { w.classList.add('active'); w.style.zIndex = ++this.top; };
+            w.querySelector('.bar').onmousedown = e => {
+                if(window.innerWidth <= 600) return;
+                if(e.target.tagName==='SPAN') return;
+                this.drag = w; this.off = {x:e.clientX-w.offsetLeft, y:e.clientY-w.offsetTop};
+            }
+        });
+        window.addEventListener('mouseup', () => this.drag = null);
+        window.addEventListener('mousemove', e => {
+            if(this.drag && !this.drag.classList.contains('max')) {
+                this.drag.style.left = (e.clientX-this.off.x)+'px';
+                this.drag.style.top = (e.clientY-this.off.y)+'px';
+            }
+        });
+        setInterval(()=>$('clk').innerText=new Date().toLocaleTimeString(),1000);
+    },
+    max(id) { $(id).classList.toggle('max'); setTimeout(() => { Ray.rs(); Pnt.rs(); }, 50); },
+    min(id) { $(id).style.display='none'; $(id).classList.add('min'); },
+    tog(id) { 
+        const w=$(id); 
+        if(window.innerWidth <= 600) {
+            document.querySelectorAll('.win').forEach(x => x.style.display='none');
+            w.style.display='flex'; w.classList.remove('min');
+        } else {
+            w.style.display = w.style.display==='none'?'flex':'none'; 
+            if(w.style.display==='flex') w.classList.remove('min');
+        }
+        if(w.style.display!=='none') { w.onmousedown(); setTimeout(() => { Ray.rs(); Pnt.rs(); }, 50); }
+    }
+};
+
+/* --- 1. RAYCASTER --- */
+const Ray = {
+    c: $('c-ray'), ctx: $('c-ray').getContext('2d'),
+    map: [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1],[1,0,0,1,1,1,0,0,1,0,0,0,0,0,0,1],
+        [1,0,0,1,0,0,0,0,1,0,0,1,0,0,0,1],[1,0,0,1,0,0,0,0,1,0,0,1,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,0,0,1,0,1,0,0,1,0,0,1,0,0,0,1],
+        [1,0,0,1,0,1,0,0,1,0,0,1,0,0,0,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ],
+    p: {x:2.5, y:2.5, d:0}, k: {},
+    init() {
+        this.ctx.imageSmoothingEnabled = false;
+        window.onkeydown=e=>this.k[e.key]=1; window.onkeyup=e=>this.k[e.key]=0;
+        this.rs(); this.loop();
+    },
+    rs() { this.c.width=320; this.c.height=200; this.ctx.imageSmoothingEnabled=false; },
+    loop() {
+        requestAnimationFrame(()=>this.loop());
+        if(!$('w-ray').offsetParent) return;
+        
+        const move = (spd) => {
+            const dx = Math.cos(this.p.d) * spd, dy = Math.sin(this.p.d) * spd;
+            if(this.map[Math.floor(this.p.y)][Math.floor(this.p.x + dx * 2)] === 0) this.p.x += dx;
+            if(this.map[Math.floor(this.p.y + dy * 2)][Math.floor(this.p.x)] === 0) this.p.y += dy;
+        };
+        if(this.k['ArrowUp']) move(0.06); if(this.k['ArrowDown']) move(-0.06);
+        if(this.k['ArrowLeft']) this.p.d -= 0.05; if(this.k['ArrowRight']) this.p.d += 0.05;
+
+        const w=320, h=200; this.ctx.fillStyle='#111'; this.ctx.fillRect(0,0,w,h);
+        for(let x=0; x<w; x++) {
+            let cx = 2 * x / w - 1, rdx = Math.cos(this.p.d) + Math.cos(this.p.d + 1.57)*0.66*cx, rdy = Math.sin(this.p.d) + Math.sin(this.p.d + 1.57)*0.66*cx;
+            let mx=Math.floor(this.p.x), my=Math.floor(this.p.y), ddx=Math.abs(1/rdx), ddy=Math.abs(1/rdy), pwd, sx, sy, hit=0, side;
+            
+            if(rdx<0) { sx=-1; sdx=(this.p.x-mx)*ddx; } else { sx=1; sdx=(mx+1-this.p.x)*ddx; }
+            if(rdy<0) { sy=-1; sdy=(this.p.y-my)*ddy; } else { sy=1; sdy=(my+1-this.p.y)*ddy; }
+            
+            while(!hit) { if(sdx<sdy) { sdx+=ddx; mx+=sx; side=0; } else { sdy+=ddy; my+=sy; side=1; } if(this.map[my][mx]>0) hit=1; }
+            pwd = side===0 ? (mx-this.p.x+(1-sx)/2)/rdx : (my-this.p.y+(1-sy)/2)/rdy;
+            let lh = Math.floor(h/pwd), col = Math.max(40, 255 - pwd*25);
+            if(side===1) col*=0.6;
+            this.ctx.fillStyle=`rgb(0,${col},0)`; this.ctx.fillRect(x,(h-lh)/2,1,lh);
+        }
+    }
+};
+
+/* --- 2. SONIC-8 (ROBUST AUDIO) --- */
+const Seq = {
+    ctx: null, an: null, grid: [], step: 0, run: false, bpm: 250, type: 'square',
+    rows: [523,493,440,392,349,329,293,261],
+    init() {
+        const ui = $('sg');
+        this.rows.forEach((fr,r) => {
+            ui.innerHTML+=`<div style="font-size:9px;color:#555;align-self:center">F${r}</div>`;
+            for(let c=0; c<8; c++) {
+                ui.innerHTML+=`<div class="note" id="n${r}-${c}" onclick="Seq.flip(${r},${c})"></div>`;
+                this.grid.push({r,c,on:0,f:fr});
+            }
+        });
+        this.visLoop();
+    },
+    flip(r,c) { 
+        const n = this.grid.find(g=>g.r==r && g.c==c); n.on=!n.on; 
+        $(`n${r}-${c}`).classList.toggle('on');
+    },
+    tog() { 
+        // 1. Create Context if missing
+        if(!this.ctx) { 
+            const AC = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AC(); 
+            this.an = this.ctx.createAnalyser(); 
+            this.an.connect(this.ctx.destination); 
+        }
+        
+        // 2. Always Resume (Browser Requirement)
+        if(this.ctx.state === 'suspended') {
+            this.ctx.resume().then(() => console.log('Audio Resumed'));
+        }
+        
+        this.run = !this.run; 
+        $('btn-seq').innerText = this.run ? "■ STOP" : "► PLAY"; 
+        $('btn-seq').style.background = this.run ? "#f00" : "#0f0";
+        if(this.run) this.tickLoop();
+    },
+    tickLoop() {
+        if(!this.run) return;
+        setTimeout(() => this.tickLoop(), 60000/this.bpm/2); 
+        document.querySelectorAll('.note.hit').forEach(n=>n.classList.remove('hit'));
+        this.grid.filter(g=>g.c===this.step && g.on).forEach(n => {
+            $(`n${n.r}-${this.step}`).classList.add('hit');
+            const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+            o.type=this.type; o.frequency.value=n.f; o.connect(g); g.connect(this.an); 
+            
+            // 3. Bulletproof Envelope (Linear Ramp)
+            const now = this.ctx.currentTime;
+            g.gain.setValueAtTime(0, now);
+            g.gain.linearRampToValueAtTime(0.1, now + 0.05); // Attack
+            g.gain.linearRampToValueAtTime(0, now + 0.2); // Release
+            
+            o.start(now); o.stop(now + 0.25);
+        });
+        for(let r=0;r<8;r++) { let el=$(`n${r}-${this.step}`); el.style.borderColor='#fff'; setTimeout(()=>el.style.borderColor='#333', 100); }
+        this.step = (this.step+1)%8;
+    },
+    visLoop() {
+        requestAnimationFrame(()=>this.visLoop());
+        if(!$('w-seq').offsetParent) return;
+        const c = $('c-vis'), x = c.getContext('2d'); c.width=c.offsetWidth; c.height=c.offsetHeight;
+        x.fillStyle='#000'; x.fillRect(0,0,c.width,c.height);
+        if(!this.an) return;
+        const d = new Uint8Array(this.an.frequencyBinCount); this.an.getByteTimeDomainData(d);
+        x.lineWidth=2; x.strokeStyle='#0f0'; x.beginPath();
+        let sl = c.width * 1.0 / d.length, px = 0;
+        for(let i=0; i<d.length; i++) { let py = (d[i]/128.0) * c.height/2; if(i===0) x.moveTo(px,py); else x.lineTo(px,py); px += sl; }
+        x.stroke();
+    }
+};
+
+/* --- 3. PAINT --- */
+const Pnt = {
+    c: $('c-pnt'), ctx: $('c-pnt').getContext('2d'), col: '#0f0', down: false,
+    cols: ['#0f0','#f00','#00f','#ff0','#f0f','#0ff','#fff'],
+    init() {
+        const p = $('pal');
+        this.cols.forEach(c => { const d=document.createElement('div'); d.className='sw'; d.style.background=c; d.onclick=()=>this.col=c; p.appendChild(d); });
+        this.rs();
+        
+        const h = (e, x, y) => { e.preventDefault(); this.down=true; this.draw(x, y); };
+        const m = (e, x, y) => { e.preventDefault(); if(this.down) this.draw(x, y); };
+        
+        this.c.addEventListener('mousedown', e => h(e, e.clientX, e.clientY));
+        this.c.addEventListener('touchstart', e => h(e, e.touches[0].clientX, e.touches[0].clientY), {passive:false});
+        window.addEventListener('mouseup', () => {this.down=false; this.ctx.beginPath()});
+        window.addEventListener('touchend', () => {this.down=false; this.ctx.beginPath()});
+        this.c.addEventListener('mousemove', e => m(e, e.clientX, e.clientY));
+        this.c.addEventListener('touchmove', e => m(e, e.touches[0].clientX, e.touches[0].clientY), {passive:false});
+    },
+    rs() { this.c.width=this.c.offsetWidth; this.c.height=this.c.offsetHeight; },
+    clr() { this.ctx.clearRect(0,0,this.c.width,this.c.height); },
+    draw(x, y) {
+        const r = this.c.getBoundingClientRect();
+        this.ctx.lineWidth = 2; this.ctx.lineCap = 'round'; this.ctx.strokeStyle = this.col;
+        this.ctx.lineTo(x-r.left, y-r.top); this.ctx.stroke();
+        this.ctx.beginPath(); this.ctx.moveTo(x-r.left, y-r.top);
+    }
+};
+
+/* --- 4. PHYS-X --- */
+const Phy = {
+    c: $('c-phy'), ctx: $('c-phy').getContext('2d'), o: [], g: 0.5, b: 0.9,
+    init() {
+        const spawn = (x,y) => {
+             const r = this.c.getBoundingClientRect();
+             this.o.push({x:x-r.left, y:y-r.top, vx:(Math.random()-0.5)*10, vy:(Math.random()-0.5)*10, c:`hsl(${Math.random()*360},100%,50%)`});
+        };
+        this.c.onmousedown = e => spawn(e.clientX, e.clientY);
+        this.c.ontouchstart = e => { e.preventDefault(); spawn(e.touches[0].clientX, e.touches[0].clientY); };
+        this.loop();
+    },
+    loop() {
+        requestAnimationFrame(()=>this.loop());
+        if(!$('w-phy').offsetParent) return;
+        const w=this.c.width=this.c.offsetWidth, h=this.c.height=this.c.offsetHeight;
+        this.ctx.fillStyle='rgba(0,0,0,0.2)'; this.ctx.fillRect(0,0,w,h); 
+        this.o.forEach(p => {
+            p.vy += parseFloat(this.g); p.x += p.vx; p.y += p.vy;
+            if(p.y > h-5) { p.y=h-5; p.vy *= -parseFloat(this.b); }
+            if(p.x < 5 || p.x > w-5) p.vx *= -1;
+            this.ctx.fillStyle = p.c; this.ctx.beginPath(); this.ctx.arc(p.x, p.y, 5, 0, 7); this.ctx.fill();
+        });
+    }
+};
+
+WM.init(); Ray.init(); Seq.init(); Pnt.init(); Phy.init();
+</script>
+</body>
+</html>
