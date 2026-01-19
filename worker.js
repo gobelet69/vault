@@ -1,6 +1,7 @@
 /**
  * FINAL SECURE VAULT SYSTEM
- * Features: Auto-Renaming (collision handling), Granular Permissions, Role Management
+ * Features: Auto-Renaming, Permissions, Role Management
+ * Modified for /vault path
  */
 
 export default {
@@ -21,7 +22,8 @@ export default {
     }
 
     // --- 2. PUBLIC ROUTES (Login) ---
-    if (url.pathname === '/login' && method === 'POST') {
+    // Correction: Check for /vault/login
+    if (url.pathname === '/vault/login' && method === 'POST') {
       try {
         const fd = await req.formData();
         const u = fd.get('u'), p = fd.get('p');
@@ -40,7 +42,8 @@ export default {
       } catch (e) { return new Response("Login Error: " + e.message, { status: 500 }); }
     }
 
-    if (url.pathname === '/logout') {
+    // Correction: Check for /vault/logout
+    if (url.pathname === '/vault/logout') {
       if (sessionId) await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
       return new Response('Logged out', { 
         status: 302, headers: { 'Location': '/', 'Set-Cookie': 'sess=; Max-Age=0; Path=/' } 
@@ -50,43 +53,36 @@ export default {
     // --- 3. PROTECTED ROUTES ---
     if (!user) return new Response(renderLogin(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
-    // API: UPLOAD (Avec Renommage + Vérification Type)
-    if (url.pathname === '/api/upload' && method === 'POST') {
+    // API: UPLOAD
+    // Correction: Check for /vault/api/upload
+    if (url.pathname === '/vault/api/upload' && method === 'POST') {
       
       const originalName = req.headers.get('X-File-Name');
       if (!originalName) return new Response("Missing name", { status: 400 });
 
-      // 1. Vérification du type de fichier pour 'Guest'
       const isPdf = originalName.toLowerCase().endsWith('.pdf');
       if (user.role === 'guest' && !isPdf) {
         return new Response("Guest users can only upload PDF files.", { status: 403 });
       }
 
       try {
-        // Nettoyage basique du nom
         let safeName = originalName.replace(/[^\x00-\x7F]/g, "").trim(); 
         
-        // 2. Logique de Renommage (Collision) : file.txt -> file (1).txt
         let finalName = safeName;
         let counter = 1;
 
         while (true) {
           const existing = await env.BUCKET.head(finalName);
-          if (!existing) break; // Le nom est libre, on sort de la boucle
-
-          // On sépare le nom et l'extension pour insérer le (1)
+          if (!existing) break;
           const dotIndex = safeName.lastIndexOf('.');
           if (dotIndex !== -1) {
-            const namePart = safeName.substring(0, dotIndex);
-            const extPart = safeName.substring(dotIndex);
-            finalName = `${namePart} (${counter})${extPart}`;
+            finalName = `${safeName.substring(0, dotIndex)} (${counter})${safeName.substring(dotIndex)}`;
           } else {
             finalName = `${safeName} (${counter})`;
           }
           counter++;
         }
 
-        // 3. Sauvegarde dans R2
         await env.BUCKET.put(finalName, req.body, {
           customMetadata: { uploader: user.username, role: user.role }
         });
@@ -95,26 +91,20 @@ export default {
       } catch (e) { return new Response("Upload Failed: " + e.message, { status: 500 }); }
     }
 
-    // API: DELETE (Permissions strictes)
-    if (url.pathname.startsWith('/api/delete/')) {
-      const fname = decodeURIComponent(url.pathname.replace('/api/delete/', ''));
+    // API: DELETE
+    // Correction: Check for /vault/api/delete/
+    if (url.pathname.startsWith('/vault/api/delete/')) {
+      const fname = decodeURIComponent(url.pathname.replace('/vault/api/delete/', ''));
       const obj = await env.BUCKET.head(fname);
       
       if (!obj) return new Response("Not found", { status: 404 });
 
       const fileOwner = obj.customMetadata?.uploader || '';
-
-      // Règle : Admin supprime tout, les autres ne suppriment que leurs propres fichiers
       let canDelete = false;
       
-      if (user.role === 'admin') {
-        canDelete = true;
-      } else {
-        // Guest et Guest+ : Uniquement si c'est LEUR fichier
-        if (fileOwner === user.username) {
-          canDelete = true;
-        }
-      }
+      if (user.role === 'admin') canDelete = true;
+      else if (user.role === 'guest+' && fileOwner === user.username) canDelete = true;
+      else if (user.role === 'guest' && fileOwner === user.username) canDelete = true; // Added guest self-delete consistency
 
       if (!canDelete) return new Response("Permission Denied: You can only delete your own files.", { status: 403 });
 
@@ -123,7 +113,8 @@ export default {
     }
 
     // API: USER MANAGEMENT
-    if (url.pathname === '/api/users' && method === 'POST') {
+    // Correction: Check for /vault/api/users
+    if (url.pathname === '/vault/api/users' && method === 'POST') {
       if (user.role !== 'admin') return new Response("Forbidden", { status: 403 });
       
       try {
@@ -144,7 +135,8 @@ export default {
     }
 
     // --- 4. RENDER DASHBOARD ---
-    if (url.pathname === '/') {
+    // Correction: Check for /vault or /vault/
+    if (url.pathname === '/vault' || url.pathname === '/vault/') {
       try {
         const list = await env.BUCKET.list({ include: ['customMetadata'] });
         
@@ -170,8 +162,9 @@ export default {
     }
 
     // SERVE FILES
-    if (url.pathname.startsWith('/file/')) {
-       const fname = decodeURIComponent(url.pathname.replace('/file/', ''));
+    // Correction: Check for /vault/file/
+    if (url.pathname.startsWith('/vault/file/')) {
+       const fname = decodeURIComponent(url.pathname.replace('/vault/file/', ''));
        const obj = await env.BUCKET.get(fname);
        if(!obj) return new Response("404", {status:404});
        
@@ -179,7 +172,6 @@ export default {
        obj.writeHttpMetadata(h); 
        h.set('etag', obj.httpEtag);
        
-       // Détection basique du Content-Type pour l'affichage navigateur
        let type = 'application/octet-stream';
        if(fname.endsWith('.pdf')) type = 'application/pdf';
        else if(fname.endsWith('.jpg') || fname.endsWith('.png')) type = 'image/' + fname.split('.').pop();
@@ -231,7 +223,8 @@ function renderLogin() {
     </div>
     <script>
       async function doLogin(f){
-        const res = await fetch('/login',{method:'POST',body:new FormData(f)});
+        // MODIFICATION: /vault/login
+        const res = await fetch('/vault/login',{method:'POST',body:new FormData(f)});
         if(res.ok) location.reload(); 
         else document.getElementById('msg').innerText = "Access Denied";
       }
@@ -242,12 +235,9 @@ function renderLogin() {
 function renderDash(user, files, users) {
   const isAdm = user.role === 'admin';
   const isGuestPlus = user.role === 'guest+';
-  
-  // Règle d'upload : Seul Guest est restreint au PDF
   const acceptAttr = user.role === 'guest' ? 'accept=".pdf"' : ''; 
 
   const fileRows = files.map(f => {
-    // Règle de suppression : Admin OU Propriétaire du fichier
     let canDel = false;
     if (isAdm) canDel = true;
     else if (f.uploader === user.username) canDel = true;
@@ -256,10 +246,11 @@ function renderDash(user, files, users) {
       ? `<span class="tag ${f.role === 'admin' ? 'admin' : 'guest+'}">${f.uploader}</span>` 
       : `<span class="tag" style="background:#444;color:#aaa">Legacy</span>`;
 
+    // MODIFICATION: /vault/file/...
     return `
     <div class="row">
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80%">
-        <a href="/file/${encodeURIComponent(f.key)}" target="_blank">📄 ${f.key}</a>
+        <a href="/vault/file/${encodeURIComponent(f.key)}" target="_blank">📄 ${f.key}</a>
         ${tagHtml}
       </div>
       <div style="display:flex;align-items:center;gap:10px">
@@ -299,13 +290,14 @@ function renderDash(user, files, users) {
     </div>
   </div>`;
 
+  // MODIFICATION: /vault/logout
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault</title><style>${CSS}</style></head>
   <body>
     <header class="row" style="margin-bottom:20px;border-bottom:1px solid #444;padding-bottom:15px">
       <div><strong>Vault</strong> <span class="tag">${user.role}</span></div>
       <div style="display:flex;gap:10px;align-items:center">
         <small>👤 ${user.username}</small>
-        <a href="/logout" style="background:#333;padding:5px 10px;border-radius:4px;color:#fff;font-size:0.8em;text-decoration:none">Logout</a>
+        <a href="/vault/logout" style="background:#333;padding:5px 10px;border-radius:4px;color:#fff;font-size:0.8em;text-decoration:none">Logout</a>
       </div>
     </header>
 
@@ -323,7 +315,8 @@ function renderDash(user, files, users) {
         if(!f) return alert('Select file');
         
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/upload', true);
+        // MODIFICATION: /vault/api/upload
+        xhr.open('POST', '/vault/api/upload', true);
         xhr.setRequestHeader('X-File-Name', f.name);
         
         xhr.upload.onprogress = e => {
@@ -344,12 +337,14 @@ function renderDash(user, files, users) {
 
       async function delFile(key) {
         if(!confirm('Delete ' + key + '?')) return;
-        const res = await fetch('/api/delete/' + encodeURIComponent(key));
+        // MODIFICATION: /vault/api/delete/
+        const res = await fetch('/vault/api/delete/' + encodeURIComponent(key));
         if(res.ok) location.reload(); else alert('Permission Denied: ' + await res.text());
       }
 
       async function saveUser(form) {
-        const res = await fetch('/api/users', {method:'POST', body:new FormData(form)});
+        // MODIFICATION: /vault/api/users
+        const res = await fetch('/vault/api/users', {method:'POST', body:new FormData(form)});
         if(res.ok) {
            location.reload();
         } else {
@@ -361,7 +356,8 @@ function renderDash(user, files, users) {
       async function deleteUser(name) {
         if(!confirm('Remove user ' + name + '?')) return;
         const fd = new FormData(); fd.append('action','delete'); fd.append('u', name);
-        await fetch('/api/users', {method:'POST', body:fd});
+        // MODIFICATION: /vault/api/users
+        await fetch('/vault/api/users', {method:'POST', body:fd});
         location.reload();
       }
     </script>
