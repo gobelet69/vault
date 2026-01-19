@@ -1,6 +1,6 @@
 /**
- * ULTRA-LIGHTWEIGHT SECURE PDF SYSTEM
- * Features: SQL Auth, RBAC, Upload Progress, R2 Storage
+ * CORRECTED SECURE PDF SYSTEM
+ * Fixes: UTF-8 Encoding, User Management (Update/Create), and Visuals
  */
 
 export default {
@@ -14,30 +14,32 @@ export default {
     let user = null;
 
     if (sessionId) {
-      // Fast lookup in D1
-      const session = await env.DB.prepare('SELECT * FROM sessions WHERE id = ? AND expires > ?').bind(sessionId, Date.now()).first();
-      if (session) user = session;
+      try {
+        // Check session validity
+        const session = await env.DB.prepare('SELECT * FROM sessions WHERE id = ? AND expires > ?').bind(sessionId, Date.now()).first();
+        if (session) user = session;
+      } catch (e) { console.error("Session DB Error:", e); }
     }
 
     // --- 2. PUBLIC ROUTES (Login) ---
     if (url.pathname === '/login' && method === 'POST') {
-      const fd = await req.formData();
-      const u = fd.get('u'), p = fd.get('p');
-      
-      // Hash Password (SHA-256)
-      const pwHash = await hash(p);
-      
-      const dbUser = await env.DB.prepare('SELECT * FROM users WHERE username = ? AND password = ?').bind(u, pwHash).first();
-      
-      if (!dbUser) return new Response('Invalid credentials', { status: 401 });
+      try {
+        const fd = await req.formData();
+        const u = fd.get('u'), p = fd.get('p');
+        const pwHash = await hash(p);
+        
+        const dbUser = await env.DB.prepare('SELECT * FROM users WHERE username = ? AND password = ?').bind(u, pwHash).first();
+        
+        if (!dbUser) return new Response('Invalid credentials', { status: 401 });
 
-      // Create Session
-      const newSess = crypto.randomUUID();
-      await env.DB.prepare('INSERT INTO sessions (id, username, role, expires) VALUES (?, ?, ?, ?)').bind(newSess, dbUser.username, dbUser.role, Date.now() + 86400000).run();
+        // Create Session
+        const newSess = crypto.randomUUID();
+        await env.DB.prepare('INSERT INTO sessions (id, username, role, expires) VALUES (?, ?, ?, ?)').bind(newSess, dbUser.username, dbUser.role, Date.now() + 86400000).run();
 
-      return new Response('OK', { 
-        headers: { 'Set-Cookie': `sess=${newSess}; HttpOnly; Secure; SameSite=Strict; Path=/` } 
-      });
+        return new Response('OK', { 
+          headers: { 'Set-Cookie': `sess=${newSess}; HttpOnly; Secure; SameSite=Strict; Path=/` } 
+        });
+      } catch (e) { return new Response("Login Error: " + e.message, { status: 500 }); }
     }
 
     if (url.pathname === '/logout') {
@@ -47,28 +49,27 @@ export default {
       });
     }
 
-    // --- 3. PROTECTED ROUTES (Redirect to / if not logged in) ---
-    if (!user) return new Response(renderLogin(), { headers: { 'Content-Type': 'text/html' } });
+    // --- 3. PROTECTED ROUTES ---
+    if (!user) return new Response(renderLogin(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
-    // API: UPLOAD (Streamed + Metadata)
+    // API: UPLOAD
     if (url.pathname === '/api/upload' && method === 'POST') {
       if (user.role === 'guest') return new Response("Guests cannot upload", { status: 403 });
 
       const filename = req.headers.get('X-File-Name');
       if (!filename) return new Response("Missing name", { status: 400 });
 
-      // Check R2 Limit implicitly (If R2 fails, it throws error)
       try {
-        await env.BUCKET.put(filename, req.body, {
+        // Enforce basic ASCII names to prevent encoding weirdness in URLs
+        const safeName = filename.replace(/[^\x00-\x7F]/g, ""); 
+        await env.BUCKET.put(safeName, req.body, {
           customMetadata: { uploader: user.username, role: user.role }
         });
         return new Response("OK");
-      } catch (e) {
-        return new Response("Upload Failed: " + e.message, { status: 500 });
-      }
+      } catch (e) { return new Response("Upload Failed: " + e.message, { status: 500 }); }
     }
 
-    // API: DELETE (Permission Logic)
+    // API: DELETE
     if (url.pathname.startsWith('/api/delete/')) {
       const fname = decodeURIComponent(url.pathname.replace('/api/delete/', ''));
       const obj = await env.BUCKET.head(fname);
@@ -79,9 +80,9 @@ export default {
       const fileOwner = obj.customMetadata?.uploader || '';
 
       let canDelete = false;
-      if (user.role === 'admin') canDelete = true; // Admin deletes everything
-      else if (user.role === 'guest+' && fileRole !== 'admin') canDelete = true; // Guest+ deletes non-admin files
-      else if (user.role === 'guest+' && fileOwner === user.username) canDelete = true; // Self delete
+      if (user.role === 'admin') canDelete = true; 
+      else if (user.role === 'guest+' && fileRole !== 'admin') canDelete = true;
+      else if (user.role === 'guest+' && fileOwner === user.username) canDelete = true;
 
       if (!canDelete) return new Response("Permission Denied", { status: 403 });
 
@@ -89,43 +90,52 @@ export default {
       return new Response("Deleted");
     }
 
-    // API: ADMIN USER MANAGEMENT
+    // API: USER MANAGEMENT (Admin Only)
     if (url.pathname === '/api/users' && method === 'POST') {
       if (user.role !== 'admin') return new Response("Forbidden", { status: 403 });
-      const fd = await req.formData();
-      const action = fd.get('action');
+      
+      try {
+        const fd = await req.formData();
+        const action = fd.get('action');
 
-      if (action === 'create') {
-        const hashPw = await hash(fd.get('p'));
-        try {
-          await env.DB.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').bind(fd.get('u'), hashPw, fd.get('r')).run();
-        } catch(e) { return new Response("User exists", { status: 400 }); }
+        if (action === 'create') {
+          // INSERT OR REPLACE allows you to UPDATE the password if user exists
+          const hashPw = await hash(fd.get('p'));
+          await env.DB.prepare('INSERT OR REPLACE INTO users (username, password, role) VALUES (?, ?, ?)').bind(fd.get('u'), hashPw, fd.get('r')).run();
+        }
+        if (action === 'delete') {
+          await env.DB.prepare('DELETE FROM users WHERE username = ?').bind(fd.get('u')).run();
+        }
+        return new Response("OK");
+      } catch(e) { 
+        return new Response("DB Error: " + e.message, { status: 500 }); 
       }
-      if (action === 'delete') {
-        await env.DB.prepare('DELETE FROM users WHERE username = ?').bind(fd.get('u')).run();
-      }
-      return new Response("OK");
     }
 
     // --- 4. RENDER DASHBOARD ---
     if (url.pathname === '/') {
-      // Fetch Files
-      const list = await env.BUCKET.list();
-      const files = list.objects.map(o => ({
-        key: o.key,
-        size: o.size,
-        uploader: o.customMetadata?.uploader || '?',
-        role: o.customMetadata?.role || '?'
-      }));
+      try {
+        const list = await env.BUCKET.list();
+        const files = list.objects.map(o => ({
+          key: o.key,
+          size: o.size,
+          uploader: o.customMetadata?.uploader || '?',
+          role: o.customMetadata?.role || '?'
+        }));
 
-      // Fetch Users (If Admin)
-      let userList = [];
-      if (user.role === 'admin') {
-        const { results } = await env.DB.prepare('SELECT username, role FROM users').all();
-        userList = results;
-      }
+        let userList = [];
+        if (user.role === 'admin') {
+          // Wrap in try-catch in case table doesn't exist yet
+          try {
+             const { results } = await env.DB.prepare('SELECT username, role FROM users').all();
+             userList = results;
+          } catch(e) { console.log("User table error", e); }
+        }
 
-      return new Response(renderDash(user, files, userList), { headers: { 'Content-Type': 'text/html' } });
+        return new Response(renderDash(user, files, userList), { 
+          headers: { 'Content-Type': 'text/html; charset=utf-8' } // FIX: Forces UTF-8
+        });
+      } catch (e) { return new Response("Render Error: " + e.message, { status: 500 }); }
     }
 
     // SERVE FILES
@@ -133,7 +143,11 @@ export default {
        const fname = decodeURIComponent(url.pathname.replace('/file/', ''));
        const obj = await env.BUCKET.get(fname);
        if(!obj) return new Response("404", {status:404});
-       const h = new Headers(); obj.writeHttpMetadata(h); h.set('etag', obj.httpEtag);
+       
+       const h = new Headers(); 
+       obj.writeHttpMetadata(h); 
+       h.set('etag', obj.httpEtag);
+       h.set('Content-Type', 'application/pdf'); // Force PDF type
        return new Response(obj.body, { headers: h });
     }
 
@@ -148,24 +162,24 @@ async function hash(str) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// --- HTML TEMPLATES (Minified-ish) ---
+// --- HTML TEMPLATES ---
 const CSS = `
 :root{--bg:#121212;--card:#1e1e1e;--txt:#e0e0e0;--p:#bb86fc;--s:#03dac6;--err:#cf6679}
-body{font-family:system-ui;background:var(--bg);color:var(--txt);max-width:800px;margin:0 auto;padding:20px}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);max-width:800px;margin:0 auto;padding:20px}
 input,select,button{background:#333;border:1px solid #444;color:#fff;padding:8px;border-radius:4px;margin:5px 0}
 button{cursor:pointer;background:var(--p);color:#000;font-weight:bold;border:none}
 button:hover{opacity:0.9}
-.card{background:var(--card);padding:20px;border-radius:8px;margin-bottom:20px;box-shadow:0 4px 6px rgba(0,0,0,0.3)}
+.card{background:var(--card);padding:20px;border-radius:8px;margin-bottom:20px;border:1px solid #333}
 .row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #333}
-.tag{font-size:0.7em;padding:2px 6px;border-radius:4px;background:#333;margin-left:5px}
+.tag{font-size:0.7em;padding:2px 6px;border-radius:4px;background:#333;margin-left:5px;vertical-align:middle}
 .tag.admin{background:var(--err);color:#000} .tag.guest\\+{background:var(--s);color:#000}
 .bar-wrap{height:4px;background:#333;margin-top:5px;border-radius:2px;overflow:hidden}
 .bar{height:100%;background:var(--s);width:0%;transition:0.2s}
-a{color:var(--s);text-decoration:none}
+a{color:var(--s);text-decoration:none} a:hover{text-decoration:underline}
 `;
 
 function renderLogin() {
-  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${CSS}</style></head>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${CSS}</style></head>
   <body style="display:flex;justify-content:center;align-items:center;height:100vh">
     <div class="card" style="width:300px;text-align:center">
       <h2>🔐 Secure Access</h2>
@@ -179,7 +193,8 @@ function renderLogin() {
     <script>
       async function l(f){
         const res = await fetch('/login',{method:'POST',body:new FormData(f)});
-        if(res.ok) location.reload(); else document.getElementById('msg').innerText="Access Denied";
+        if(res.ok) location.reload(); 
+        else document.getElementById('msg').innerText = "Access Denied";
       }
     </script>
   </body></html>`;
@@ -191,35 +206,44 @@ function renderDash(user, files, users) {
 
   // File List Logic
   const fileRows = files.map(f => {
-    // Delete Logic: Admin can delete all. Guest+ can delete non-admin files.
     let canDel = false;
     if (isAdm) canDel = true;
     else if (user.role === 'guest+' && f.role !== 'admin') canDel = true;
+    else if (user.role === 'guest+' && f.uploader === user.username) canDel = true;
 
     return `
     <div class="row">
-      <div>
+      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80%">
         <a href="/file/${encodeURIComponent(f.key)}" target="_blank">📄 ${f.key}</a>
         <span class="tag ${f.role === 'admin' ? 'admin' : 'guest+'}">${f.uploader}</span>
-        <small style="color:#666">(${(f.size/1024).toFixed(1)} KB)</small>
       </div>
-      ${canDel ? `<button onclick="del('${f.key}')" style="background:var(--err);padding:2px 8px;font-size:12px">×</button>` : ''}
+      <div style="display:flex;align-items:center;gap:10px">
+        <small style="color:#666">${(f.size/1024).toFixed(1)} KB</small>
+        ${canDel ? `<button onclick="del('${f.key}')" style="background:var(--err);padding:2px 8px;font-size:12px">✕</button>` : ''}
+      </div>
     </div>`;
-  }).join('') || '<p style="text-align:center;color:#666">No files.</p>';
+  }).join('') || '<p style="text-align:center;color:#666">No files yet.</p>';
 
   // Admin User Panel
   const userPanel = isAdm ? `
   <div class="card">
     <h3>👥 User Management</h3>
-    <form onsubmit="event.preventDefault();u(this)">
+    <p><small style="color:#888">To change a password, just create the user again with the new password.</small></p>
+    <form onsubmit="event.preventDefault();u(this)" style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:5px">
       <input type="hidden" name="action" value="create">
-      <input type="text" name="u" placeholder="New Username" required>
+      <input type="text" name="u" placeholder="Username" required>
       <input type="password" name="p" placeholder="Password" required>
       <select name="r"><option value="guest">Guest</option><option value="guest+">Guest +</option><option value="admin">Admin</option></select>
-      <button>Add User</button>
+      <button>Save</button>
     </form>
     <hr style="border:0;border-top:1px solid #333;margin:15px 0">
-    ${users.map(u => `<div class="row"><small>${u.username} (${u.role})</small> ${u.username!=='admin'?`<button onclick="kill('${u.username}')" style="background:#333;color:#fff;font-size:10px">DEL</button>`:''}</div>`).join('')}
+    <div style="max-height:150px;overflow-y:auto">
+    ${users.map(u => `
+      <div class="row" style="padding:5px 0">
+        <small>${u.username} <span style="color:#666">(${u.role})</span></small> 
+        ${u.username!=='admin'?`<button onclick="kill('${u.username}')" style="background:#333;color:#fff;font-size:10px">✕</button>`:''}
+      </div>`).join('')}
+    </div>
   </div>` : '';
 
   // Upload Panel
@@ -229,23 +253,23 @@ function renderDash(user, files, users) {
     <input type="file" id="f" accept=".pdf">
     <div class="bar-wrap"><div id="pb" class="bar"></div></div>
     <div style="display:flex;justify-content:space-between;margin-top:10px">
-      <small id="st">Max: 5GB (R2)</small>
+      <small id="st">Ready</small>
       <button onclick="up()">Start Upload</button>
     </div>
   </div>` : '';
 
-  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault</title><style>${CSS}</style></head>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault</title><style>${CSS}</style></head>
   <body>
-    <header class="row" style="margin-bottom:20px">
+    <header class="row" style="margin-bottom:20px;border-bottom:1px solid #444;padding-bottom:15px">
       <div><strong>Vault</strong> <span class="tag">${user.role}</span></div>
       <div style="display:flex;gap:10px;align-items:center">
         <small>👤 ${user.username}</small>
-        <a href="/logout" style="background:#333;padding:5px 10px;border-radius:4px;color:#fff;font-size:0.8em">Logout</a>
+        <a href="/logout" style="background:#333;padding:5px 10px;border-radius:4px;color:#fff;font-size:0.8em;text-decoration:none">Logout</a>
       </div>
     </header>
 
-    ${uploadPanel}
     ${userPanel}
+    ${uploadPanel}
 
     <div class="card">
       <h3>Files</h3>
@@ -253,7 +277,6 @@ function renderDash(user, files, users) {
     </div>
 
     <script>
-      // UPLOAD WITH PROGRESS
       function up() {
         const f = document.getElementById('f').files[0];
         if(!f) return alert('Select file');
@@ -286,7 +309,12 @@ function renderDash(user, files, users) {
 
       async function u(form) {
         const res = await fetch('/api/users', {method:'POST', body:new FormData(form)});
-        if(res.ok) location.reload(); else alert('Failed');
+        if(res.ok) {
+           location.reload();
+        } else {
+           const txt = await res.text();
+           alert('Failed: ' + txt);
+        }
       }
 
       async function kill(name) {
