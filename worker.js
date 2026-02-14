@@ -21,32 +21,66 @@ export default {
       } catch (e) { console.error("Session DB Error:", e); }
     }
 
-    // --- 2. PUBLIC ROUTES (Login) ---
-    // Correction: Check for /vault/login
+    // --- 2. PUBLIC ROUTES (Login & Register) ---
+    // Login route
     if (url.pathname === '/vault/login' && method === 'POST') {
       try {
         const fd = await req.formData();
         const u = fd.get('u'), p = fd.get('p');
         const pwHash = await hash(p);
-        
-        const dbUser = await env.DB.prepare('SELECT * FROM users WHERE username = ? AND password = ?').bind(u, pwHash).first();
-        
+
+        // Query AUTH_DB for user authentication
+        const dbUser = await env.AUTH_DB.prepare('SELECT * FROM users WHERE username = ? AND password = ?').bind(u, pwHash).first();
+
         if (!dbUser) return new Response('Invalid credentials', { status: 401 });
 
-        const newSess = crypto.randomUUID();
-        await env.DB.prepare('INSERT INTO sessions (id, username, role, expires) VALUES (?, ?, ?, ?)').bind(newSess, dbUser.username, dbUser.role, Date.now() + 86400000).run();
+        // Get user role (default to 'guest' if not set)
+        const role = dbUser.role || 'guest';
 
-        return new Response('OK', { 
-          headers: { 'Set-Cookie': `sess=${newSess}; HttpOnly; Secure; SameSite=Strict; Path=/` } 
+        const newSess = crypto.randomUUID();
+        // Store session in DB (not AUTH_DB)
+        await env.DB.prepare('INSERT INTO sessions (id, username, role, expires) VALUES (?, ?, ?, ?)').bind(newSess, dbUser.username, role, Date.now() + 86400000).run();
+
+        return new Response('OK', {
+          headers: { 'Set-Cookie': `sess=${newSess}; HttpOnly; Secure; SameSite=Strict; Path=/` }
         });
       } catch (e) { return new Response("Login Error: " + e.message, { status: 500 }); }
+    }
+
+    // Register route
+    if (url.pathname === '/vault/register' && method === 'POST') {
+      try {
+        const fd = await req.formData();
+        const u = fd.get('u'), p = fd.get('p'), p2 = fd.get('p2');
+
+        // Validate inputs
+        if (!u || !p || !p2) return new Response('All fields required', { status: 400 });
+        if (p !== p2) return new Response('Passwords do not match', { status: 400 });
+        if (u.length < 3) return new Response('Username must be at least 3 characters', { status: 400 });
+        if (p.length < 6) return new Response('Password must be at least 6 characters', { status: 400 });
+
+        // Check if user already exists
+        const existing = await env.AUTH_DB.prepare('SELECT username FROM users WHERE username = ?').bind(u).first();
+        if (existing) return new Response('Username already exists', { status: 409 });
+
+        const pwHash = await hash(p);
+        // Insert into AUTH_DB with default role 'guest'
+        await env.AUTH_DB.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').bind(u, pwHash, 'guest').run();
+
+        return new Response('OK');
+      } catch (e) { return new Response("Registration Error: " + e.message, { status: 500 }); }
+    }
+
+    // Show register page
+    if (url.pathname === '/vault/register' && method === 'GET') {
+      return new Response(renderRegister(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
     // Correction: Check for /vault/logout
     if (url.pathname === '/vault/logout') {
       if (sessionId) await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
-      return new Response('Logged out', { 
-        status: 302, headers: { 'Location': '/', 'Set-Cookie': 'sess=; Max-Age=0; Path=/' } 
+      return new Response('Logged out', {
+        status: 302, headers: { 'Location': '/', 'Set-Cookie': 'sess=; Max-Age=0; Path=/' }
       });
     }
 
@@ -56,7 +90,7 @@ export default {
     // API: UPLOAD
     // Correction: Check for /vault/api/upload
     if (url.pathname === '/vault/api/upload' && method === 'POST') {
-      
+
       const originalName = req.headers.get('X-File-Name');
       if (!originalName) return new Response("Missing name", { status: 400 });
 
@@ -66,8 +100,8 @@ export default {
       }
 
       try {
-        let safeName = originalName.replace(/[^\x00-\x7F]/g, "").trim(); 
-        
+        let safeName = originalName.replace(/[^\x00-\x7F]/g, "").trim();
+
         let finalName = safeName;
         let counter = 1;
 
@@ -96,12 +130,12 @@ export default {
     if (url.pathname.startsWith('/vault/api/delete/')) {
       const fname = decodeURIComponent(url.pathname.replace('/vault/api/delete/', ''));
       const obj = await env.BUCKET.head(fname);
-      
+
       if (!obj) return new Response("Not found", { status: 404 });
 
       const fileOwner = obj.customMetadata?.uploader || '';
       let canDelete = false;
-      
+
       if (user.role === 'admin') canDelete = true;
       else if (user.role === 'guest+' && fileOwner === user.username) canDelete = true;
       else if (user.role === 'guest' && fileOwner === user.username) canDelete = true; // Added guest self-delete consistency
@@ -116,21 +150,23 @@ export default {
     // Correction: Check for /vault/api/users
     if (url.pathname === '/vault/api/users' && method === 'POST') {
       if (user.role !== 'admin') return new Response("Forbidden", { status: 403 });
-      
+
       try {
         const fd = await req.formData();
         const action = fd.get('action');
 
         if (action === 'create') {
           const hashPw = await hash(fd.get('p'));
-          await env.DB.prepare('INSERT OR REPLACE INTO users (username, password, role) VALUES (?, ?, ?)').bind(fd.get('u'), hashPw, fd.get('r')).run();
+          // Use AUTH_DB for user management
+          await env.AUTH_DB.prepare('INSERT OR REPLACE INTO users (username, password, role) VALUES (?, ?, ?)').bind(fd.get('u'), hashPw, fd.get('r')).run();
         }
         if (action === 'delete') {
-          await env.DB.prepare('DELETE FROM users WHERE username = ?').bind(fd.get('u')).run();
+          // Use AUTH_DB for user management
+          await env.AUTH_DB.prepare('DELETE FROM users WHERE username = ?').bind(fd.get('u')).run();
         }
         return new Response("OK");
-      } catch(e) { 
-        return new Response("DB Error: " + e.message, { status: 500 }); 
+      } catch (e) {
+        return new Response("DB Error: " + e.message, { status: 500 });
       }
     }
 
@@ -139,23 +175,24 @@ export default {
     if (url.pathname === '/vault' || url.pathname === '/vault/') {
       try {
         const list = await env.BUCKET.list({ include: ['customMetadata'] });
-        
+
         const files = list.objects.map(o => ({
           key: o.key,
           size: o.size,
-          uploader: o.customMetadata?.uploader || '?', 
+          uploader: o.customMetadata?.uploader || '?',
           role: o.customMetadata?.role || '?'
         }));
 
         let userList = [];
         if (user.role === 'admin') {
           try {
-             const { results } = await env.DB.prepare('SELECT username, role FROM users').all();
-             userList = results;
-          } catch(e) { console.log("User table error", e); }
+            // Get users from AUTH_DB
+            const { results } = await env.AUTH_DB.prepare('SELECT username, role FROM users').all();
+            userList = results;
+          } catch (e) { console.log("User table error", e); }
         }
 
-        return new Response(renderDash(user, files, userList), { 
+        return new Response(renderDash(user, files, userList), {
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
       } catch (e) { return new Response("Render Error: " + e.message, { status: 500 }); }
@@ -164,22 +201,22 @@ export default {
     // SERVE FILES
     // Correction: Check for /vault/file/
     if (url.pathname.startsWith('/vault/file/')) {
-       const fname = decodeURIComponent(url.pathname.replace('/vault/file/', ''));
-       const obj = await env.BUCKET.get(fname);
-       if(!obj) return new Response("404", {status:404});
-       
-       const h = new Headers(); 
-       obj.writeHttpMetadata(h); 
-       h.set('etag', obj.httpEtag);
-       
-       let type = 'application/octet-stream';
-       if(fname.endsWith('.pdf')) type = 'application/pdf';
-       else if(fname.endsWith('.jpg') || fname.endsWith('.png')) type = 'image/' + fname.split('.').pop();
-       else if(fname.endsWith('.txt')) type = 'text/plain';
-       
-       h.set('Content-Type', type);
-       
-       return new Response(obj.body, { headers: h });
+      const fname = decodeURIComponent(url.pathname.replace('/vault/file/', ''));
+      const obj = await env.BUCKET.get(fname);
+      if (!obj) return new Response("404", { status: 404 });
+
+      const h = new Headers();
+      obj.writeHttpMetadata(h);
+      h.set('etag', obj.httpEtag);
+
+      let type = 'application/octet-stream';
+      if (fname.endsWith('.pdf')) type = 'application/pdf';
+      else if (fname.endsWith('.jpg') || fname.endsWith('.png')) type = 'image/' + fname.split('.').pop();
+      else if (fname.endsWith('.txt')) type = 'text/plain';
+
+      h.set('Content-Type', type);
+
+      return new Response(obj.body, { headers: h });
     }
 
     return new Response("404", { status: 404 });
@@ -212,18 +249,21 @@ a{color:var(--s);text-decoration:none} a:hover{text-decoration:underline}
 function renderLogin() {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${CSS}</style></head>
   <body style="display:flex;justify-content:center;align-items:center;height:100vh">
-    <div class="card" style="width:300px;text-align:center">
+    <div class="card" style="width:320px;text-align:center">
       <h2>🔐 Secure Access</h2>
       <form onsubmit="event.preventDefault();doLogin(this)">
-        <input type="text" name="u" placeholder="Username" required style="width:90%"><br>
-        <input type="password" name="p" placeholder="Password" required style="width:90%"><br>
-        <button style="width:100%">LOGIN</button>
+        <input type="text" name="u" id="username" placeholder="Username" autocomplete="username" required style="width:90%"><br>
+        <input type="password" name="p" id="password" placeholder="Password" autocomplete="current-password" required style="width:90%"><br>
+        <button type="submit" style="width:100%;margin-bottom:10px">LOGIN</button>
       </form>
+      <div style="margin-top:15px;padding-top:15px;border-top:1px solid #333">
+        <small style="color:#888">Don't have an account?</small><br>
+        <a href="/vault/register" style="display:inline-block;margin-top:8px;padding:8px 16px;background:#333;border-radius:4px;text-decoration:none">Create Account</a>
+      </div>
       <div id="msg" style="margin-top:10px;color:var(--err)"></div>
     </div>
     <script>
       async function doLogin(f){
-        // MODIFICATION: /vault/login
         const res = await fetch('/vault/login',{method:'POST',body:new FormData(f)});
         if(res.ok) location.reload(); 
         else document.getElementById('msg').innerText = "Access Denied";
@@ -232,18 +272,50 @@ function renderLogin() {
   </body></html>`;
 }
 
+function renderRegister() {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${CSS}</style></head>
+  <body style="display:flex;justify-content:center;align-items:center;height:100vh">
+    <div class="card" style="width:320px;text-align:center">
+      <h2>📝 Create Account</h2>
+      <form onsubmit="event.preventDefault();doRegister(this)">
+        <input type="text" name="u" id="username" placeholder="Username" autocomplete="username" required style="width:90%"><br>
+        <input type="password" name="p" id="password" placeholder="Password" autocomplete="new-password" required style="width:90%"><br>
+        <input type="password" name="p2" id="password2" placeholder="Confirm Password" autocomplete="new-password" required style="width:90%"><br>
+        <button type="submit" style="width:100%;margin-bottom:10px">REGISTER</button>
+      </form>
+      <div style="margin-top:15px;padding-top:15px;border-top:1px solid #333">
+        <small style="color:#888">Already have an account?</small><br>
+        <a href="/vault" style="display:inline-block;margin-top:8px;padding:8px 16px;background:#333;border-radius:4px;text-decoration:none">Back to Login</a>
+      </div>
+      <div id="msg" style="margin-top:10px;color:var(--err)"></div>
+    </div>
+    <script>
+      async function doRegister(f){
+        const res = await fetch('/vault/register',{method:'POST',body:new FormData(f)});
+        if(res.ok) {
+          alert('Account created successfully! You can now login.');
+          location.href = '/vault';
+        } else {
+          const txt = await res.text();
+          document.getElementById('msg').innerText = txt;
+        }
+      }
+    </script>
+  </body></html>`;
+}
+
 function renderDash(user, files, users) {
   const isAdm = user.role === 'admin';
   const isGuestPlus = user.role === 'guest+';
-  const acceptAttr = user.role === 'guest' ? 'accept=".pdf"' : ''; 
+  const acceptAttr = user.role === 'guest' ? 'accept=".pdf"' : '';
 
   const fileRows = files.map(f => {
     let canDel = false;
     if (isAdm) canDel = true;
     else if (f.uploader === user.username) canDel = true;
 
-    const tagHtml = f.uploader !== '?' 
-      ? `<span class="tag ${f.role === 'admin' ? 'admin' : 'guest+'}">${f.uploader}</span>` 
+    const tagHtml = f.uploader !== '?'
+      ? `<span class="tag ${f.role === 'admin' ? 'admin' : 'guest+'}">${f.uploader}</span>`
       : `<span class="tag" style="background:#444;color:#aaa">Legacy</span>`;
 
     // MODIFICATION: /vault/file/...
@@ -254,7 +326,7 @@ function renderDash(user, files, users) {
         ${tagHtml}
       </div>
       <div style="display:flex;align-items:center;gap:10px">
-        <small style="color:#666">${(f.size/1024).toFixed(1)} KB</small>
+        <small style="color:#666">${(f.size / 1024).toFixed(1)} KB</small>
         ${canDel ? `<button onclick="delFile('${f.key}')" style="background:var(--err);padding:2px 8px;font-size:12px">✕</button>` : ''}
       </div>
     </div>`;
@@ -274,7 +346,7 @@ function renderDash(user, files, users) {
     ${users.map(u => `
       <div class="row" style="padding:5px 0">
         <small>${u.username} <span style="color:#666">(${u.role})</span></small> 
-        ${u.username!=='admin'?`<button onclick="deleteUser('${u.username}')" style="background:#333;color:#fff;font-size:10px">✕</button>`:''}
+        ${u.username !== 'admin' ? `<button onclick="deleteUser('${u.username}')" style="background:#333;color:#fff;font-size:10px">✕</button>` : ''}
       </div>`).join('')}
     </div>
   </div>` : '';

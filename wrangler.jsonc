@@ -7,6 +7,11 @@
   ],
   "d1_databases": [
     {
+      "binding": "AUTH_DB",
+      "database_name": "global-auth",
+      "database_id": "ba736065-1d46-450b-a083-efc8ba935939"
+    },
+    {
       "binding": "DB",
       "database_name": "pdfs",
       "database_id": "c2e90b66-e4bf-43b7-859f-a452650f94ec"
