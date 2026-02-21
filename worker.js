@@ -279,17 +279,16 @@ function renderDash(user, files, users) {
 
   function renderVaultHeader(user) {
     const id = 'vuw';
-    return `<a href="/" style="text-decoration:none;display:flex;align-items:center;gap:8px;flex-shrink:0">
-    <span style="width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#f43f5e);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.9em;color:#fff;flex-shrink:0;box-shadow:0 0 16px rgba(99,102,241,0.5)">111</span>
-    <span style="font-weight:700;font-size:1.1em;color:#fff;letter-spacing:-0.02em">111<span style="color:#6366f1">iridescence</span></span>
+    return `<a href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <span style="width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#f43f5e);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.9em;color:#fff;flex-shrink:0;box-shadow:0 0 18px rgba(99,102,241,0.55)">111</span>
+    <div style="display:flex;flex-direction:column;line-height:1.25">
+      <span style="font-weight:700;font-size:1.1em;color:#fff;letter-spacing:-0.02em">111<span style="color:#6366f1;text-shadow:0 0 20px rgba(99,102,241,0.6)">iridescence</span></span>
+      <span style="font-size:0.72em;color:#94a3b8;font-weight:500;letter-spacing:0.03em">Vault</span>
+    </div>
   </a>
   <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
-    <div style="width:1px;height:24px;background:rgba(255,255,255,0.08)"></div>
-    <span style="color:#94a3b8;font-size:0.85em;font-weight:600">Vault</span>
-    <div style="width:1px;height:24px;background:rgba(255,255,255,0.08)"></div>
     <div class="user-wrap" id="${id}">
       <button class="user-btn" onclick="document.getElementById('${id}').classList.toggle('open')">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-7 8-7s8 3 8 7"/></svg>
         ${user.username} <span class="tag" style="margin-left:4px;font-size:0.7em">${user.role}</span>
         <svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
