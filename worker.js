@@ -16,76 +16,23 @@ export default {
 
     if (sessionId) {
       try {
-        const session = await env.DB.prepare('SELECT * FROM sessions WHERE id = ? AND expires > ?').bind(sessionId, Date.now()).first();
-        if (session) user = session;
+        const session = await env.AUTH_DB.prepare('SELECT * FROM sessions WHERE id = ? AND expires > ?').bind(sessionId, Date.now()).first();
+        if (session) {
+          user = session;
+          // Fetch role from users table since central sessions may not store role
+          const dbUser = await env.AUTH_DB.prepare('SELECT role FROM users WHERE username = ?').bind(user.username).first();
+          user.role = dbUser ? (dbUser.role || 'guest') : 'guest';
+        }
       } catch (e) { console.error("Session DB Error:", e); }
     }
 
-    // --- 2. PUBLIC ROUTES (Login & Register) ---
-    // Login route
-    if (url.pathname === '/vault/login' && method === 'POST') {
-      try {
-        const fd = await req.formData();
-        const u = fd.get('u'), p = fd.get('p');
-        const pwHash = await hash(p);
-
-        // Query AUTH_DB for user authentication
-        const dbUser = await env.AUTH_DB.prepare('SELECT * FROM users WHERE username = ? AND password = ?').bind(u, pwHash).first();
-
-        if (!dbUser) return new Response('Invalid credentials', { status: 401 });
-
-        // Get user role (default to 'guest' if not set)
-        const role = dbUser.role || 'guest';
-
-        const newSess = crypto.randomUUID();
-        // Store session in DB (not AUTH_DB)
-        await env.DB.prepare('INSERT INTO sessions (id, username, role, expires) VALUES (?, ?, ?, ?)').bind(newSess, dbUser.username, role, Date.now() + 86400000).run();
-
-        return new Response('OK', {
-          headers: { 'Set-Cookie': `sess=${newSess}; HttpOnly; Secure; SameSite=Strict; Path=/` }
-        });
-      } catch (e) { return new Response("Login Error: " + e.message, { status: 500 }); }
-    }
-
-    // Register route
-    if (url.pathname === '/vault/register' && method === 'POST') {
-      try {
-        const fd = await req.formData();
-        const u = fd.get('u'), p = fd.get('p'), p2 = fd.get('p2');
-
-        // Validate inputs
-        if (!u || !p || !p2) return new Response('All fields required', { status: 400 });
-        if (p !== p2) return new Response('Passwords do not match', { status: 400 });
-        if (u.length < 3) return new Response('Username must be at least 3 characters', { status: 400 });
-        if (p.length < 6) return new Response('Password must be at least 6 characters', { status: 400 });
-
-        // Check if user already exists
-        const existing = await env.AUTH_DB.prepare('SELECT username FROM users WHERE username = ?').bind(u).first();
-        if (existing) return new Response('Username already exists', { status: 409 });
-
-        const pwHash = await hash(p);
-        // Insert into AUTH_DB with default role 'guest'
-        await env.AUTH_DB.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').bind(u, pwHash, 'guest').run();
-
-        return new Response('OK');
-      } catch (e) { return new Response("Registration Error: " + e.message, { status: 500 }); }
-    }
-
-    // Show register page
-    if (url.pathname === '/vault/register' && method === 'GET') {
-      return new Response(renderRegister(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-    }
-
-    // Correction: Check for /vault/logout
-    if (url.pathname === '/vault/logout') {
-      if (sessionId) await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
-      return new Response('Logged out', {
-        status: 302, headers: { 'Location': '/', 'Set-Cookie': 'sess=; Max-Age=0; Path=/' }
+    // --- 2. PROTECTED ROUTES ---
+    if (!user) {
+      return new Response(null, {
+        status: 302,
+        headers: { 'Location': `/auth/login?redirect=${encodeURIComponent(url.pathname)}` }
       });
     }
-
-    // --- 3. PROTECTED ROUTES ---
-    if (!user) return new Response(renderLogin(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
     // API: UPLOAD
     // Correction: Check for /vault/api/upload
@@ -246,63 +193,7 @@ button:hover{opacity:0.9}
 a{color:var(--s);text-decoration:none} a:hover{text-decoration:underline}
 `;
 
-function renderLogin() {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${CSS}</style></head>
-  <body style="display:flex;justify-content:center;align-items:center;height:100vh">
-    <div class="card" style="width:320px;text-align:center">
-      <h2>🔐 Secure Access</h2>
-      <form onsubmit="event.preventDefault();doLogin(this)">
-        <input type="text" name="u" id="username" placeholder="Username" autocomplete="username" required style="width:90%"><br>
-        <input type="password" name="p" id="password" placeholder="Password" autocomplete="current-password" required style="width:90%"><br>
-        <button type="submit" style="width:100%;margin-bottom:10px">LOGIN</button>
-      </form>
-      <div style="margin-top:15px;padding-top:15px;border-top:1px solid #333">
-        <small style="color:#888">Don't have an account?</small><br>
-        <a href="/vault/register" style="display:inline-block;margin-top:8px;padding:8px 16px;background:#333;border-radius:4px;text-decoration:none">Create Account</a>
-      </div>
-      <div id="msg" style="margin-top:10px;color:var(--err)"></div>
-    </div>
-    <script>
-      async function doLogin(f){
-        const res = await fetch('/vault/login',{method:'POST',body:new FormData(f)});
-        if(res.ok) location.reload(); 
-        else document.getElementById('msg').innerText = "Access Denied";
-      }
-    </script>
-  </body></html>`;
-}
-
-function renderRegister() {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${CSS}</style></head>
-  <body style="display:flex;justify-content:center;align-items:center;height:100vh">
-    <div class="card" style="width:320px;text-align:center">
-      <h2>📝 Create Account</h2>
-      <form onsubmit="event.preventDefault();doRegister(this)">
-        <input type="text" name="u" id="username" placeholder="Username" autocomplete="username" required style="width:90%"><br>
-        <input type="password" name="p" id="password" placeholder="Password" autocomplete="new-password" required style="width:90%"><br>
-        <input type="password" name="p2" id="password2" placeholder="Confirm Password" autocomplete="new-password" required style="width:90%"><br>
-        <button type="submit" style="width:100%;margin-bottom:10px">REGISTER</button>
-      </form>
-      <div style="margin-top:15px;padding-top:15px;border-top:1px solid #333">
-        <small style="color:#888">Already have an account?</small><br>
-        <a href="/vault" style="display:inline-block;margin-top:8px;padding:8px 16px;background:#333;border-radius:4px;text-decoration:none">Back to Login</a>
-      </div>
-      <div id="msg" style="margin-top:10px;color:var(--err)"></div>
-    </div>
-    <script>
-      async function doRegister(f){
-        const res = await fetch('/vault/register',{method:'POST',body:new FormData(f)});
-        if(res.ok) {
-          alert('Account created successfully! You can now login.');
-          location.href = '/vault';
-        } else {
-          const txt = await res.text();
-          document.getElementById('msg').innerText = txt;
-        }
-      }
-    </script>
-  </body></html>`;
-}
+// Removed local renderLogin and renderRegister as they are now handled by global-auth.
 
 function renderDash(user, files, users) {
   const isAdm = user.role === 'admin';
@@ -362,14 +253,14 @@ function renderDash(user, files, users) {
     </div>
   </div>`;
 
-  // MODIFICATION: /vault/logout
+  // MODIFICATION: /vault/logout -> /auth/logout
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault</title><style>${CSS}</style></head>
   <body>
     <header class="row" style="margin-bottom:20px;border-bottom:1px solid #444;padding-bottom:15px">
       <div><strong>Vault</strong> <span class="tag">${user.role}</span></div>
       <div style="display:flex;gap:10px;align-items:center">
         <small>👤 ${user.username}</small>
-        <a href="/vault/logout" style="background:#333;padding:5px 10px;border-radius:4px;color:#fff;font-size:0.8em;text-decoration:none">Logout</a>
+        <a href="/auth/logout" style="background:#333;padding:5px 10px;border-radius:4px;color:#fff;font-size:0.8em;text-decoration:none">Logout</a>
       </div>
     </header>
 
