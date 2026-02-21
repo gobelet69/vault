@@ -264,11 +264,15 @@ function renderDash(user, files, users) {
   // MODIFICATION: /vault/logout -> /auth/logout
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault</title><style>${CSS}</style></head>
   <body>
-    <header class="row" style="margin-bottom:20px;border-bottom:1px solid #444;padding-bottom:15px">
-      <div><strong>Vault</strong> <span class="tag">${user.role}</span></div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <small>👤 ${user.username}</small>
-        <a href="/auth/logout" style="background:#333;padding:5px 10px;border-radius:4px;color:#fff;font-size:0.8em;text-decoration:none">Logout</a>
+    <header>
+      <div style="display:flex;align-items:center;gap:12px">
+        <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:8px;color:var(--txt-main)"><span style="width:30px;height:30px;background:linear-gradient(135deg,#6366f1,#f43f5e);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85em;color:#fff;flex-shrink:0">111</span><strong>Vault</strong></a>
+        <span class="tag">${user.role}</span>
+        <span style="color:var(--txt-muted);font-size:0.8em;padding:4px 10px;background:rgba(255,255,255,0.05);border-radius:20px;border:1px solid var(--border)">${user.username}</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a href="/" class="nav-link" style="background:rgba(255,255,255,0.04);border:1px solid var(--border)">🏠 Hub</a>
+        <a href="/auth/logout" style="color:var(--err);align-self:center;font-size:0.9em;font-weight:500;padding:8px 12px;border-radius:8px;background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.15);transition:all 0.2s" onmouseover="this.style.background='rgba(244,63,94,0.15)'" onmouseout="this.style.background='rgba(244,63,94,0.08)'">Sign out</a>
       </div>
     </header>
 
