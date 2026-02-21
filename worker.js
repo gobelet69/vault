@@ -196,7 +196,7 @@ button:hover{background:var(--p-hover);transform:translateY(-1px);box-shadow:0 6
 .bar-wrap{height:6px;background:rgba(0,0,0,0.3);margin-top:8px;border-radius:3px;overflow:hidden;border:1px solid var(--border)}
 .bar{height:100%;background:var(--p);width:0%;transition:0.3s ease-out;box-shadow:0 0 10px var(--p)}
 a{color:var(--p);text-decoration:none;transition:color 0.2s} a:hover{color:var(--s)}
-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px!important;background:var(--card)!important;border-bottom:1px solid var(--border)!important;margin-bottom:30px!important;border-radius:16px!important;box-shadow:0 4px 20px rgba(0,0,0,0.2)!important}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px!important;background:var(--card)!important;border-bottom:1px solid var(--border)!important;margin-bottom:30px!important;border-radius:16px!important;box-shadow:0 4px 20px rgba(0,0,0,0.2)!important;flex-wrap:nowrap;gap:12px}
 header strong{font-size:1.2em;letter-spacing:-0.02em}
 h3{font-size:1.3em;margin-bottom:20px;font-weight:700;letter-spacing:-0.01em}
 `;
@@ -262,17 +262,17 @@ function renderDash(user, files, users) {
   </div>`;
 
   // MODIFICATION: /vault/logout -> /auth/logout
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault</title><style>${CSS}</style></head>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault · 111iridescence</title><style>${CSS}</style></head>
   <body>
     <header>
-      <div style="display:flex;align-items:center;gap:12px">
-        <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:8px;color:var(--txt-main)"><span style="width:30px;height:30px;background:linear-gradient(135deg,#6366f1,#f43f5e);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85em;color:#fff;flex-shrink:0">111</span><strong>Vault</strong></a>
+      <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span style="width:34px;height:34px;background:linear-gradient(135deg,#6366f1,#f43f5e);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.9em;color:#fff;flex-shrink:0;box-shadow:0 0 14px rgba(99,102,241,0.5)">111</span>
+        <span style="font-weight:700;font-size:1.05em;color:#fff;letter-spacing:-0.02em">111<span style="color:#6366f1">iridescence</span></span>
+      </a>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
         <span class="tag">${user.role}</span>
-        <span style="color:var(--txt-muted);font-size:0.8em;padding:4px 10px;background:rgba(255,255,255,0.05);border-radius:20px;border:1px solid var(--border)">${user.username}</span>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <a href="/" class="nav-link" style="background:rgba(255,255,255,0.04);border:1px solid var(--border)">🏠 Hub</a>
-        <a href="/auth/logout" style="color:var(--err);align-self:center;font-size:0.9em;font-weight:500;padding:8px 12px;border-radius:8px;background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.15);transition:all 0.2s" onmouseover="this.style.background='rgba(244,63,94,0.15)'" onmouseout="this.style.background='rgba(244,63,94,0.08)'">Sign out</a>
+        <span style="color:var(--txt-muted);font-size:0.82em;padding:5px 11px;background:rgba(255,255,255,0.04);border-radius:20px;border:1px solid var(--border);white-space:nowrap">${user.username}</span>
+        <a href="/auth/logout" style="color:var(--err);font-size:0.9em;font-weight:500;padding:8px 12px;border-radius:8px;background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.15);transition:background 0.2s;white-space:nowrap;text-decoration:none" onmouseover="this.style.background='rgba(244,63,94,0.15)'" onmouseout="this.style.background='rgba(244,63,94,0.08)'">Sign out</a>
       </div>
     </header>
 
