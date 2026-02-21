@@ -217,6 +217,8 @@ header strong{font-size:1.2em;letter-spacing:-0.02em}
 h3{font-size:1.3em;margin-bottom:20px;font-weight:700;letter-spacing:-0.01em}
 `;
 
+const FAVICON = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%23f43f5e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='16' y='21' font-family='Arial,sans-serif' font-weight='900' font-size='12' fill='white' text-anchor='middle'%3E111%3C/text%3E%3C/svg%3E`;
+
 // Removed local renderLogin and renderRegister as they are now handled by global-auth.
 
 function renderDash(user, files, users) {
@@ -309,7 +311,7 @@ function renderDash(user, files, users) {
   </div>`;
   }
   // MODIFICATION: /vault/logout -> /auth/logout
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vault · 111iridescence</title><style>${CSS}</style></head>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>111 Vault</title><link rel="icon" type="image/svg+xml" href="${FAVICON}"><style>${CSS}</style></head>
   <body>
     <header>
       ${renderVaultHeader(user)}
