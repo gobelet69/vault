@@ -179,18 +179,26 @@ async function hash(str) {
 
 // --- HTML TEMPLATES ---
 const CSS = `
-:root{--bg:#121212;--card:#1e1e1e;--txt:#e0e0e0;--p:#bb86fc;--s:#03dac6;--err:#cf6679}
-body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);max-width:800px;margin:0 auto;padding:20px}
-input,select,button{background:#333;border:1px solid #444;color:#fff;padding:8px;border-radius:4px;margin:5px 0}
-button{cursor:pointer;background:var(--p);color:#000;font-weight:bold;border:none}
-button:hover{opacity:0.9}
-.card{background:var(--card);padding:20px;border-radius:8px;margin-bottom:20px;border:1px solid #333}
-.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #333}
-.tag{font-size:0.7em;padding:2px 6px;border-radius:4px;background:#333;margin-left:5px;vertical-align:middle}
-.tag.admin{background:var(--err);color:#000} .tag.guest\\+{background:var(--s);color:#000}
-.bar-wrap{height:4px;background:#333;margin-top:5px;border-radius:2px;overflow:hidden}
-.bar{height:100%;background:var(--s);width:0%;transition:0.2s}
-a{color:var(--s);text-decoration:none} a:hover{text-decoration:underline}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+:root{--bg:#0f1117;--card:#161b22;--txt-main:#f8fafc;--txt-muted:#94a3b8;--p:#6366f1;--p-hover:#4f46e5;--s:#0ea5e9;--err:#f43f5e;--good:#10b981;--border:rgba(255,255,255,0.08);--ring:rgba(99,102,241,0.5)}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--txt-main);max-width:900px;margin:0 auto;padding:24px;line-height:1.5;box-sizing:border-box}
+input,select,button{background:rgba(0,0,0,0.2);border:1px solid var(--border);color:var(--txt-main);padding:10px 14px;border-radius:8px;margin:5px 0;transition:all 0.2s;font-family:inherit;font-size:0.95em}
+input:focus,select:focus{outline:none;border-color:var(--p);box-shadow:0 0 0 3px var(--ring)}
+button{cursor:pointer;background:var(--p);color:#fff;font-weight:600;border:none;padding:10px 16px;border-radius:8px;transition:all 0.2s;font-family:inherit;font-size:0.95em;box-shadow:0 4px 12px rgba(99,102,241,0.2)}
+button:hover{background:var(--p-hover);transform:translateY(-1px);box-shadow:0 6px 16px rgba(99,102,241,0.3)}
+.card{background:var(--card);padding:24px;border-radius:16px;margin-bottom:24px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.2)}
+.row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border);margin:-14px -16px 14px;transition:background 0.2s;border-radius:8px}
+.row:hover{background:rgba(255,255,255,0.02)}
+.card > .row:last-child{border-bottom:none;margin-bottom:-14px}
+.tag{font-size:0.75em;padding:4px 10px;border-radius:12px;background:rgba(255,255,255,0.1);margin-left:8px;vertical-align:middle;font-weight:600}
+.tag.admin{background:rgba(244,63,94,0.15);color:var(--err);border:1px solid rgba(244,63,94,0.2)} 
+.tag.guest\\+{background:rgba(14,165,233,0.15);color:var(--s);border:1px solid rgba(14,165,233,0.2)}
+.bar-wrap{height:6px;background:rgba(0,0,0,0.3);margin-top:8px;border-radius:3px;overflow:hidden;border:1px solid var(--border)}
+.bar{height:100%;background:var(--p);width:0%;transition:0.3s ease-out;box-shadow:0 0 10px var(--p)}
+a{color:var(--p);text-decoration:none;transition:color 0.2s} a:hover{color:var(--s)}
+header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px!important;background:var(--card)!important;border-bottom:1px solid var(--border)!important;margin-bottom:30px!important;border-radius:16px!important;box-shadow:0 4px 20px rgba(0,0,0,0.2)!important}
+header strong{font-size:1.2em;letter-spacing:-0.02em}
+h3{font-size:1.3em;margin-bottom:20px;font-weight:700;letter-spacing:-0.01em}
 `;
 
 // Removed local renderLogin and renderRegister as they are now handled by global-auth.
