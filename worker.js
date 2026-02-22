@@ -125,7 +125,7 @@ export default {
         const action = fd.get('action');
         if (action === 'create') {
           const pw = await hash(fd.get('p'));
-          await env.AUTH_DB.prepare('INSERT OR REPLACE INTO users (username, password, role) VALUES (?, ?, ?)').bind(fd.get('u'), pw, fd.get('r')).run();
+          await env.AUTH_DB.prepare('INSERT OR REPLACE INTO users (username, password, role, created_at) VALUES (?, ?, ?, ?)').bind(fd.get('u'), pw, fd.get('r'), new Date().toISOString()).run();
         }
         if (action === 'delete')
           await env.AUTH_DB.prepare('DELETE FROM users WHERE username = ?').bind(fd.get('u')).run();
