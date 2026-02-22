@@ -45,6 +45,15 @@ async function resolveAccess(user, key, meta, env) {
   return chkVis(user, e.vis, e.au, e.owner);
 }
 
+function canSeeFolder(user, f) {
+  if (isOwner(user)) return true;
+  const vis = normalizeVis(f.visibility || 'only-me');
+  if (vis === 'public' || vis === 'vault') return true;
+  if ((f.uploader || '') === user.username) return true;
+  if (vis === 'people') return (f.allowed_users || '').split(',').map(s => s.trim()).filter(Boolean).includes(user.username);
+  return false;
+}
+
 // ── WORKER ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(req, env) {
@@ -181,13 +190,21 @@ export default {
     // DASHBOARD
     if (url.pathname === '/vault' || url.pathname === '/vault/') {
       const cp = url.searchParams.get('path') || '';
+      // Guard: check user can access the requested folder path
+      if (cp) {
+        const cfm = await env.BUCKET.head('.folder:' + cp);
+        const cfMeta = { visibility: cfm?.customMetadata?.visibility || 'only-me', allowed_users: cfm?.customMetadata?.allowed_users || '', uploader: cfm?.customMetadata?.uploader || '' };
+        if (!canSeeFolder(user, cfMeta)) return new Response(null, { status: 302, headers: { Location: '/vault' } });
+      }
       const prefix = cp ? cp + '/' : '';
       const listing = await env.BUCKET.list({ prefix, delimiter: '/', include: ['customMetadata'] });
-      const folders = await Promise.all((listing.delimitedPrefixes || []).map(async fp => {
+      const foldersRaw = await Promise.all((listing.delimitedPrefixes || []).map(async fp => {
         const p = fp.slice(0, -1), name = p.replace(prefix, '');
         const fm = await env.BUCKET.head('.folder:' + p);
-        return { name, path: p, visibility: normalizeVis(fm?.customMetadata?.visibility || 'inherit'), allowed_users: fm?.customMetadata?.allowed_users || '', uploader: fm?.customMetadata?.uploader || '' };
+        return { name, path: p, visibility: normalizeVis(fm?.customMetadata?.visibility || 'only-me'), allowed_users: fm?.customMetadata?.allowed_users || '', uploader: fm?.customMetadata?.uploader || '' };
       }));
+      // Filter to only show folders the user can access
+      const folders = foldersRaw.filter(f => canSeeFolder(user, f));
       const vf = [];
       for (const o of listing.objects) {
         if (o.key.startsWith('.folder:')) continue;
