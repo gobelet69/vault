@@ -291,7 +291,20 @@ function renderHeader(user, showAdmin = false) {
       <div class="user-dropdown">
         <div class="user-dropdown-header">
           <div class="uname">${user.username}</div>
-          <div class="role">Vault · ${user.role}</div>
+          <div style="margin-top:6px">
+            ${{
+      admin: `<span style="display:inline-block;font-size:0.72em;font-weight:700;padding:2px 9px;border-radius:20px;background:rgba(244,63,94,0.15);color:#f43f5e;border:1px solid rgba(244,63,94,0.25);letter-spacing:0.03em">admin</span>`,
+      'guest+': `<span style="display:inline-block;font-size:0.72em;font-weight:700;padding:2px 9px;border-radius:20px;background:rgba(14,165,233,0.15);color:#0ea5e9;border:1px solid rgba(14,165,233,0.25);letter-spacing:0.03em">guest+</span>`,
+      guest: `<span style="display:inline-block;font-size:0.72em;font-weight:700;padding:2px 9px;border-radius:20px;background:rgba(148,163,184,0.12);color:#94a3b8;border:1px solid rgba(148,163,184,0.2);letter-spacing:0.03em">guest</span>`
+    }[user.role] || `<span style="font-size:0.78em;color:#94a3b8">${user.role}</span>`}
+          </div>
+          <div style="margin-top:8px;font-size:0.75em;color:#64748b;line-height:1.5">
+            ${{
+      admin: '🔑 Upload all · Delete any · Manage users',
+      'guest+': '📁 Upload all files · Delete own files',
+      guest: '📄 Upload PDF only · Delete own files'
+    }[user.role] || ''}
+          </div>
         </div>
         <a href="/auth/account">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-7 8-7s8 3 8 7"/></svg>
