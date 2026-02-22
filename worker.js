@@ -255,6 +255,15 @@ header{display:flex;justify-content:space-between;align-items:center;min-height:
 /* UPLOAD PROGRESS */
 .bar-wrap{height:5px;background:rgba(0,0,0,.3);margin-top:12px;border-radius:3px;overflow:hidden;border:1px solid var(--border)}
 .bar{height:100%;background:var(--p);width:0%;transition:width .2s;box-shadow:0 0 8px var(--p)}
+/* DRAG DROP */
+.dz{border:2px dashed var(--border);border-radius:14px;padding:36px 24px;text-align:center;cursor:pointer;transition:all .2s;background:rgba(255,255,255,.01)}
+.dz:hover{border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.04)}
+.dz.over{border-color:var(--p);background:rgba(99,102,241,.08);transform:scale(1.01)}
+.drop-overlay{display:none;position:fixed;inset:0;background:rgba(99,102,241,.12);z-index:2000;align-items:center;justify-content:center;flex-direction:column;gap:16px;pointer-events:none}
+.drop-overlay.show{display:flex}
+.drop-ring{width:160px;height:160px;border-radius:50%;border:4px dashed rgba(99,102,241,.7);display:flex;align-items:center;justify-content:center;font-size:3em;animation:pulse 1s infinite alternate}
+@keyframes pulse{from{transform:scale(1);opacity:.8}to{transform:scale(1.06);opacity:1}}
+.drop-label{color:#a5b4fc;font-size:1.3em;font-weight:700;letter-spacing:-.01em}
 /* NEW FOLDER FORM */
 .nf-form{display:none;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;align-items:center;gap:8px;flex-wrap:wrap}
 .nf-form.open{display:flex}
@@ -353,7 +362,7 @@ function renderDash(user, files, folders, userList, currentPath) {
 
   <div class="toolbar">
     <button class="btn-ghost" onclick="toggleNF()">📁 New Folder</button>
-    <button onclick="document.getElementById('up-panel').style.display=document.getElementById('up-panel').style.display==='none'?'block':'none'">⬆ Upload</button>
+    <button onclick="document.getElementById('fi').click()">⬆ Upload</button>
     ${inFolder ? `<span style="font-size:.82em;color:var(--dim)">in <strong style="color:var(--muted)">${currentPath}</strong></span>` : ''}
   </div>
 
@@ -365,22 +374,34 @@ function renderDash(user, files, folders, userList, currentPath) {
 
   ${folders.length > 0 ? `<div style="margin-bottom:6px;font-size:.8em;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase">Folders</div><div class="folder-grid">${folderCards}</div>` : ''}
 
-  <div class="card" id="up-panel" style="display:none">
-    <div style="font-size:.95em;font-weight:700;margin-bottom:14px">⬆ Upload a file${inFolder ? ` into <em style="color:var(--muted)">${currentPath}</em>` : ''}</div>
-    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin-bottom:14px">
-      <input type="file" id="fi" ${!isMember(user) ? 'accept=".pdf"' : ''} style="cursor:pointer">
-      <button onclick="uploadFile()" style="height:40px">Upload</button>
+  <!-- Drop zone -->
+  <div class="dz" id="dz" onclick="document.getElementById('fi').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop(event)">
+    <div style="font-size:2.2em;margin-bottom:8px">☁️</div>
+    <div style="font-weight:600;font-size:.95em;margin-bottom:4px">Drag files here or <span style="color:var(--p)">click to browse</span></div>
+    <div style="font-size:.78em;color:var(--dim)">${!isMember(user) ? 'PDF files only · ' : ''} Uploading into: <strong style="color:var(--muted)">${currentPath || 'Home'}</strong></div>
+  </div>
+  <input type="file" id="fi" style="display:none" ${!isMember(user) ? 'accept=".pdf"' : ''} multiple onchange="filesSelected(this.files)">
+
+  <!-- Upload settings panel (shows after selecting files) -->
+  <div id="up-settings" style="display:none" class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span id="up-filelist" style="font-size:.88em;font-weight:600;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%"></span>
+      <button class="btn-ghost btn-sm" onclick="cancelUpload()">Cancel</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <span style="font-size:.86em;font-weight:600;color:var(--muted)">Who can access this?</span>
-      ${tip("Set who can see and download this file. Choose 'Inherited' to follow the folder's permission.")}
+      <span style="font-size:.86em;font-weight:600;color:var(--muted)">Who can access?</span>
+      ${tip("Choose who can see this file after upload. 'Inherited' follows the folder's setting.")}
     </div>
     <div class="scards" id="up-cards">${shareCards('inherit', 'up', inFolder)}</div>
-    <div id="up-people" style="display:${inFolder ? 'none' : 'none'};margin-top:8px">
-      <select id="up-users" multiple style="height:100px">${userOpts}</select>
+    <div id="up-people" style="display:none;margin-top:8px">
+      <select id="up-users" multiple style="height:90px">${userOpts}</select>
+      <small style="color:var(--dim);display:block;margin-top:4px">Hold Ctrl / ⌘ to pick multiple</small>
     </div>
     <div class="bar-wrap"><div id="pb" class="bar"></div></div>
-    <small id="st" style="color:var(--dim);display:block;margin-top:5px">Ready</small>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <small id="st" style="color:var(--dim)">Ready</small>
+      <button onclick="startUpload()">Start Upload</button>
+    </div>
   </div>
 
   <div class="card">
@@ -411,28 +432,46 @@ function renderDash(user, files, folders, userList, currentPath) {
 
     function navigate(p){location.href='/vault?path='+encodeURIComponent(p);}
 
-    // Upload card selection
+    // Upload
+    let _files=null;
+    function filesSelected(fl){if(!fl||!fl.length)return;_files=fl;const names=Array.from(fl).map(f=>f.name).join(', ');document.getElementById('up-filelist').textContent=fl.length+' file'+(fl.length>1?'s':'')+': '+names;document.getElementById('up-settings').style.display='block';document.getElementById('up-settings').scrollIntoView({behavior:'smooth',block:'nearest'});}
+    function cancelUpload(){_files=null;document.getElementById('up-settings').style.display='none';document.getElementById('pb').style.width='0%';document.getElementById('st').textContent='Ready';}
+    function handleDrop(e){e.preventDefault();document.getElementById('dz').classList.remove('over');filesSelected(e.dataTransfer.files);}
     function upSel(v){
       ['only-me','vault','people','inherit'].forEach(x=>{const c=document.getElementById('up-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
-      const pp=document.getElementById('up-people');if(pp)pp.style.display=v==='people'?'block':'none';
+      document.getElementById('up-people').style.display=v==='people'?'block':'none';
     }
-
-    function uploadFile(){
-      const f=document.getElementById('fi').files?.[0];
-      if(!f)return alert('Select a file first.');
+    async function startUpload(){
+      if(!_files||!_files.length)return;
       const vis=document.querySelector('input[name=upvis]:checked')?.value||'inherit';
       const sel=document.getElementById('up-users');
       const au=sel?Array.from(sel.selectedOptions).map(o=>o.value).join(','):'';
       if(vis==='people'&&sel&&!au)return alert('Select at least one person or choose a different option.');
-      const xhr=new XMLHttpRequest();
-      xhr.open('POST','/vault/api/upload',true);
-      xhr.setRequestHeader('X-File-Name',f.name);
-      xhr.setRequestHeader('X-Visibility',vis);
-      xhr.setRequestHeader('X-Allowed-Users',au);
-      xhr.setRequestHeader('X-Folder',CUR_PATH);
-      xhr.upload.onprogress=e=>{if(e.lengthComputable){const p=e.loaded/e.total*100;document.getElementById('pb').style.width=p+'%';document.getElementById('st').textContent=Math.round(p)+'% — '+f.name;}};
-      xhr.onload=()=>{if(xhr.status===200)location.reload();else alert('Error: '+xhr.responseText);};
-      xhr.send(f);
+      const files=Array.from(_files);
+      let done=0;
+      for(const f of files){
+        document.getElementById('st').textContent='Uploading '+f.name+' ('+(done+1)+'/'+files.length+')';
+        await new Promise((resolve,reject)=>{
+          const xhr=new XMLHttpRequest();
+          xhr.open('POST','/vault/api/upload',true);
+          xhr.setRequestHeader('X-File-Name',f.name);
+          xhr.setRequestHeader('X-Visibility',vis);
+          xhr.setRequestHeader('X-Allowed-Users',au);
+          xhr.setRequestHeader('X-Folder',CUR_PATH);
+          xhr.upload.onprogress=e=>{if(e.lengthComputable){const p=e.loaded/e.total*100;document.getElementById('pb').style.width=((done/files.length+p/100/files.length)*100)+'%';}};
+          xhr.onload=()=>{if(xhr.status===200){done++;resolve();}else reject(xhr.responseText);};
+          xhr.onerror=()=>reject('Network error');
+          xhr.send(f);
+        }).catch(err=>{alert('Error uploading '+f.name+': '+err);});
+      }
+      location.reload();
+    }
+    // Full-page drag overlay
+    let _dc=0;
+    document.addEventListener('dragenter',e=>{if(e.dataTransfer.types.includes('Files')){_dc++;document.getElementById('drop-overlay').classList.add('show');}});
+    document.addEventListener('dragleave',()=>{_dc--;if(_dc<=0){_dc=0;document.getElementById('drop-overlay').classList.remove('show');}});
+    document.addEventListener('dragover',e=>e.preventDefault());
+    document.addEventListener('drop',e=>{e.preventDefault();_dc=0;document.getElementById('drop-overlay').classList.remove('show');filesSelected(e.dataTransfer.files);});
     }
 
     // New folder
@@ -478,7 +517,10 @@ function renderDash(user, files, folders, userList, currentPath) {
       if(res.ok)location.reload();else{alert(await res.text());btn.textContent='Save changes';btn.disabled=false;}
     }
   <\/script>
+  <div class="drop-overlay" id="drop-overlay"><div class="drop-ring">☁️</div><div class="drop-label">Drop files to upload</div></div>
 </body></html>`;
+
+
 }
 
 // ── ADMIN PANEL ────────────────────────────────────────────────────────────────
