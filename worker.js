@@ -408,7 +408,6 @@ function renderDash(user, files, folders, userList, currentPath) {
       <span class="folder-icon">📁</span>
       <div class="folder-actions">
         <button class="btn-sm btn-share" onclick="event.stopPropagation();openShare('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}',true)" title="Share">🔗</button>
-        <button class="btn-sm btn-edit" onclick="event.stopPropagation();openVis('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}')" title="Edit sharing">✏️</button>
         ${isOwner(user) || f.uploader === user.username ? `<button class="btn-sm btn-del" onclick="event.stopPropagation();delFolder('${esc(f.path)}')" title="Delete folder">✕</button>` : ''}
       </div>
     </div>
@@ -436,7 +435,6 @@ function renderDash(user, files, folders, userList, currentPath) {
       <td>${f.uploader ? utag(f.uploader, fOwnerRole) : '<span style="color:var(--dim)">—</span>'}</td><td>${visPill(f.visibility)}</td><td style="color:var(--dim)">—</td>
       <td onclick="event.stopPropagation()"><span style="display:flex;gap:4px">
         <button class="btn-sm btn-share" onclick="openShare('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}',true)" title="Share">🔗</button>
-        <button class="btn-sm btn-edit" onclick="openVis('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}')" title="Edit sharing">✏️</button>
         ${isOwner(user) || f.uploader === user.username ? `<button class="btn-sm btn-del" onclick="delFolder('${esc(f.path)}')" title="Delete">✕</button>` : ''}
       </span></td>
     </tr>`;
@@ -451,7 +449,7 @@ function renderDash(user, files, folders, userList, currentPath) {
         <td style="color:var(--dim)">${(f.size / 1024).toFixed(1)} KB</td>
         <td><span style="display:flex;gap:4px">
           <button class="btn-sm btn-share" onclick="openShare('${esc(f.key)}','${f.visibility}','${esc(f.allowed_users)}',false)" title="Share">🔗</button>
-          ${canAct ? `<button class="btn-sm btn-edit" onclick="openVis('${esc(f.key)}','${f.visibility}','${esc(f.allowed_users)}')" title="Edit sharing">✏️</button><button class="btn-sm btn-del" onclick="delFile('${esc(f.key)}')" title="Delete">✕</button>` : ''}
+          ${canAct ? `<button class="btn-sm btn-del" onclick="delFile('${esc(f.key)}')" title="Delete">✕</button>` : ''}
         </span></td>
       </tr>`;
     })
@@ -498,37 +496,20 @@ function renderDash(user, files, folders, userList, currentPath) {
     <tbody>${allRows || emptyRow}</tbody></table>
   </div>
 
-  <!-- Visibility modal -->
-  <div class="modal-bg" id="vis-modal" onclick="if(event.target===this)closeVis()">
-    <div class="modal-box">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">Edit Visibility</span><button onclick="closeVis()" style="background:none;border:none;color:var(--muted);font-size:1.1em;padding:4px 8px;cursor:pointer">✕</button></div>
-      <div id="vm-fn" style="font-size:.82em;color:var(--dim);margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-      <div class="scards" id="vm-cards">${shareCards('only-me', 'vm')}</div>
-      <div id="vm-people" style="display:none;margin-top:8px">
-        <div style="font-size:.83em;color:var(--muted);font-weight:500;margin-bottom:6px">Select people</div>
-        <div class="user-check-list" id="vm-users-list">${otherUsers.map(u => { const rm = ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer; return `<label class="ucl-item"><input type="checkbox" name="vm-user" value="${esc(u.username)}"><span class="ucl-name">${u.username}</span><span class="ucl-role">${rm.icon} ${rm.label}</span></label>`; }).join('')}</div>
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
-        <button onclick="closeVis()" class="btn-ghost">Cancel</button>
-        <button id="vm-save" onclick="saveVis()">Save changes</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Share modal -->
+  <!-- Share modal (unified) -->
   <div class="modal-bg" id="share-modal" onclick="if(event.target===this)closeShare()">
     <div class="modal-box">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">🔗 Share</span><button onclick="closeShare()" style="background:none;border:none;color:var(--muted);font-size:1.1em;padding:4px 8px;cursor:pointer">✕</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">🔗 Share / Access</span><button onclick="closeShare()" style="background:none;border:none;color:var(--muted);font-size:1.1em;padding:4px 8px;cursor:pointer">✕</button></div>
       <div id="sm-fn" style="font-size:.82em;color:var(--dim);margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-      <div id="sm-url-wrap" style="display:none">
-        <div style="font-size:.8em;font-weight:600;color:var(--muted);margin-bottom:6px">Public link</div>
-        <div class="share-url-box"><span id="sm-url"></span><button class="btn-sm" onclick="copyShareUrl()" id="sm-copy-btn">Copy</button></div>
+      <div id="sm-url-wrap">
+        <div style="font-size:.8em;font-weight:600;color:var(--muted);margin-bottom:6px">Link</div>
+        <div class="share-url-box"><span id="sm-url" style="cursor:text;user-select:all"></span><button class="btn-sm" onclick="copyShareUrl()" id="sm-copy-btn">Copy</button></div>
       </div>
       <div style="font-size:.85em;font-weight:600;color:var(--muted);margin-bottom:8px">Who can access?</div>
       <div class="scards" id="sm-cards">${shareCards('only-me', 'sm')}</div>
       <div id="sm-people" style="display:none;margin-top:8px">
         <div style="font-size:.83em;color:var(--muted);font-weight:500;margin-bottom:6px">Select people</div>
-        <div class="user-check-list" id="sm-users-list">${otherUsers.map(u => { const rm = ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer; return `<label class="ucl-item"><input type="checkbox" name="sm-user" value="${esc(u.username)}"><span class="ucl-name">${u.username}</span><span class="ucl-role">${rm.icon} ${rm.label}</span></label>`; }).join('')}</div>
+        <div class="user-check-list" id="sm-users-list"></div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
         <button onclick="closeShare()" class="btn-ghost">Cancel</button>
@@ -617,45 +598,48 @@ function renderDash(user, files, folders, userList, currentPath) {
       if(res.ok)location.reload();else alert(await res.text());
     }
 
-    // Visibility modal
-    let _vmKey='';
-    function openVis(key,curVis,curAU){
-      _vmKey=key;
-      document.getElementById('vm-fn').textContent=(key.startsWith('.folder:')?'📁 ':'📄 ')+(key.startsWith('.folder:')?key.replace('.folder:',''):key.split('/').pop());
-      vmSel(curVis);
-      if(curAU){const ns=curAU.split(',').map(x=>x.trim());document.querySelectorAll('input[name=vm-user]').forEach(cb=>cb.checked=ns.includes(cb.value));}
-      document.getElementById('vis-modal').style.display='flex';document.body.style.overflow='hidden';
-    }
-    function vmSel(v){
-      ['only-me','vault','people','public'].forEach(x=>{const c=document.getElementById('vm-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
-      const pp=document.getElementById('vm-people');if(pp)pp.style.display=v==='people'?'block':'none';
-    }
-    function closeVis(){document.getElementById('vis-modal').style.display='none';document.body.style.overflow='';}
-    async function saveVis(){
-      const vis=document.querySelector('input[name=vmvis]:checked')?.value||'only-me';
-      const checked=document.querySelectorAll('input[name=vm-user]:checked');
-      const au=Array.from(checked).map(o=>o.value).join(',');
-      if(vis==='people'&&!au)return alert('Select at least one person.');
-      const btn=document.getElementById('vm-save');btn.textContent='Saving…';btn.disabled=true;
-      const res=await fetch('/vault/api/update-visibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:_vmKey,visibility:vis,allowed_users:au})});
-      if(res.ok)location.reload();else{alert(await res.text());btn.textContent='Save changes';btn.disabled=false;}
-    }
-
-    // Share modal
-    let _smKey='',_smIsFolder=false;
+    // Unified Share modal
+    const ALL_USERS = ${JSON.stringify(otherUsers.map(u => ({ username: u.username, role: normalizeRole(u.role), label: (ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer).label, icon: (ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer).icon })))};
+    let _smKey='';
     function openShare(key,curVis,curAU,isFolder){
-      _smKey=key;_smIsFolder=isFolder;
+      _smKey=key;
       const label=key.startsWith('.folder:')?key.replace('.folder:',''):key.split('/').pop();
       document.getElementById('sm-fn').textContent=(isFolder?'📁 ':'📄 ')+label;
-      // URL box — only for files (not folders)
-      const urlWrap=document.getElementById('sm-url-wrap');
-      if(!isFolder){
-        const fileKey=key.startsWith('.folder:')?key.replace('.folder:',''):key;
-        document.getElementById('sm-url').textContent=location.origin+'/vault/file/'+encodeURIComponent(fileKey);
-        urlWrap.style.display='block';
-      } else { urlWrap.style.display='none'; }
+      // URL — always shown: file URL for files, vault path URL for folders
+      const urlEl=document.getElementById('sm-url');
+      if(isFolder){
+        const folderPath=key.replace('.folder:','');
+        urlEl.textContent=location.origin+'/vault?path='+encodeURIComponent(folderPath);
+      } else {
+        urlEl.textContent=location.origin+'/vault/file/'+encodeURIComponent(key);
+      }
+      document.getElementById('sm-copy-btn').textContent='Copy';
+      document.getElementById('sm-copy-btn').style.color='';
+      // Build people list dynamically (avoids label nesting issues)
+      const list=document.getElementById('sm-users-list');
+      const selectedUsers=curAU?curAU.split(',').map(x=>x.trim()).filter(Boolean):[];
+      list.innerHTML='';
+      ALL_USERS.forEach(u=>{
+        const row=document.createElement('div');
+        row.className='ucl-item';
+        const cb=document.createElement('input');
+        cb.type='checkbox';
+        cb.value=u.username;
+        cb.checked=selectedUsers.includes(u.username);
+        cb.style.cssText='width:15px;height:15px;accent-color:var(--p);cursor:pointer;flex-shrink:0';
+        const nm=document.createElement('span');
+        nm.className='ucl-name';
+        nm.textContent=u.username;
+        const rl=document.createElement('span');
+        rl.className='ucl-role';
+        rl.textContent=u.icon+' '+u.label;
+        row.appendChild(cb);
+        row.appendChild(nm);
+        row.appendChild(rl);
+        row.addEventListener('click',e=>{ if(e.target!==cb){cb.checked=!cb.checked;} });
+        list.appendChild(row);
+      });
       smSel(curVis);
-      if(curAU){const ns=curAU.split(',').map(x=>x.trim());document.querySelectorAll('input[name=sm-user]').forEach(cb=>cb.checked=ns.includes(cb.value));}
       document.getElementById('share-modal').style.display='flex';document.body.style.overflow='hidden';
     }
     function smSel(v){
@@ -669,8 +653,7 @@ function renderDash(user, files, folders, userList, currentPath) {
     }
     async function saveShare(){
       const vis=document.querySelector('input[name=smvis]:checked')?.value||'only-me';
-      const checked=document.querySelectorAll('input[name=sm-user]:checked');
-      const au=Array.from(checked).map(o=>o.value).join(',');
+      const au=Array.from(document.querySelectorAll('#sm-users-list input[type=checkbox]:checked')).map(cb=>cb.value).join(',');
       if(vis==='people'&&!au)return alert('Select at least one person.');
       const btn=document.getElementById('sm-save');btn.textContent='Saving…';btn.disabled=true;
       const res=await fetch('/vault/api/update-visibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:_smKey,visibility:vis,allowed_users:au})});
