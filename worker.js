@@ -10,28 +10,39 @@ function isOwner(u) { return normalizeRole(u.role) === 'owner'; }
 function isMember(u) { return ['owner', 'member'].includes(normalizeRole(u.role)); }
 const ROLE_META = { owner: { label: 'Owner', color: '#f43f5e', bg: 'rgba(244,63,94,0.15)', border: 'rgba(244,63,94,0.3)', icon: '🔑' }, member: { label: 'Member', color: '#6366f1', bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.3)', icon: '📁' }, viewer: { label: 'Viewer', color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.2)', icon: '👁' } };
 const ROLE_PERMS = { owner: ['Upload any file type', 'Delete any file', 'Share files', 'Manage users & roles', 'Access admin panel'], member: ['Upload any file type', 'Delete own files', 'Share files'], viewer: ['Upload PDF files only', 'Delete own files'] };
-const VIS_META = { 'only-me': { label: 'Only me', icon: '🔒', color: '#64748b' }, 'vault': { label: 'Everyone in vault', icon: '🏢', color: '#10b981' }, 'people': { label: 'Specific people', icon: '👥', color: '#6366f1' }, 'inherit': { label: 'Inherited', icon: '🔗', color: '#f59e0b' } };
+const VIS_META = {
+  'only-me': { label: 'Only me', icon: '🔒', color: '#64748b' },
+  'vault': { label: 'Everyone in vault', icon: '🏢', color: '#10b981' },
+  'people': { label: 'Specific people', icon: '👥', color: '#6366f1' },
+  'public': { label: 'Public (anyone)', icon: '🌐', color: '#f59e0b' }
+};
 
 // ── VISIBILITY HELPERS ────────────────────────────────────────────────────────
-function normalizeVis(v) { if (v === 'public') return 'vault'; if (v === 'specific') return 'people'; if (v === 'private') return 'only-me'; return v || 'only-me'; }
+function normalizeVis(v) { if (v === 'specific') return 'people'; if (v === 'private') return 'only-me'; if (v === 'inherit') return 'only-me'; return v || 'only-me'; }
 function chkVis(user, vis, au, owner) {
-  if (vis === 'vault') return true;
+  if (vis === 'public' || vis === 'vault') return true;
+  if (!user) return false;
   if ((owner || '') === user.username) return true;
   if (vis === 'people') return (au || '').split(',').map(s => s.trim()).filter(Boolean).includes(user.username);
   return false;
 }
-async function resolveAccess(user, key, meta, env) {
-  if (isOwner(user)) return true;
-  const vis = normalizeVis(meta.visibility || 'only-me');
-  if (vis !== 'inherit') return chkVis(user, vis, meta.allowed_users, meta.uploader);
-  const parts = key.split('/');
-  for (let d = parts.length - 1; d > 0; d--) {
+// Get effective visibility for a key (folder overrides file for files inside folders)
+async function effVis(key, meta, env) {
+  let vis = normalizeVis(meta.visibility || 'only-me'), au = meta.allowed_users || '', owner = meta.uploader || '';
+  if (key.includes('/')) {
     try {
-      const fm = await env.BUCKET.head('.folder:' + parts.slice(0, d).join('/'));
-      if (fm) { const fv = normalizeVis(fm.customMetadata?.visibility || 'inherit'); if (fv !== 'inherit') return chkVis(user, fv, fm.customMetadata?.allowed_users, fm.customMetadata?.uploader); }
+      const fm = await env.BUCKET.head('.folder:' + key.split('/').slice(0, -1).join('/'));
+      if (fm?.customMetadata?.visibility) { vis = normalizeVis(fm.customMetadata.visibility); au = fm.customMetadata.allowed_users || ''; owner = fm.customMetadata.uploader || ''; }
     } catch (e) { }
   }
-  return (meta.uploader || '') === user.username;
+  return { vis, au, owner };
+}
+async function resolveAccess(user, key, meta, env) {
+  const e = await effVis(key, meta, env);
+  if (e.vis === 'public') return true;
+  if (!user) return false;
+  if (isOwner(user)) return true;
+  return chkVis(user, e.vis, e.au, e.owner);
 }
 
 // ── WORKER ────────────────────────────────────────────────────────────────────
@@ -42,6 +53,23 @@ export default {
     const sid = cookie.split(';').find(c => c.trim().startsWith('sess='))?.split('=')[1];
     let user = null;
     if (sid) { try { const sess = await env.AUTH_DB.prepare('SELECT * FROM sessions WHERE id=? AND expires>?').bind(sid, Date.now()).first(); if (sess) { user = sess; const du = await env.AUTH_DB.prepare('SELECT role FROM users WHERE username=?').bind(sess.username).first(); user.role = du?.role || 'viewer'; } } catch (e) { } }
+
+    // SERVE FILE (before auth — public files work without login)
+    if (url.pathname.startsWith('/vault/file/')) {
+      const key = decodeURIComponent(url.pathname.replace('/vault/file/', ''));
+      const obj = await env.BUCKET.get(key);
+      if (!obj) return new Response('404', { status: 404 });
+      const m = obj.customMetadata || {};
+      const ev = await effVis(key, m, env);
+      if (ev.vis !== 'public' && !user) return new Response(null, { status: 302, headers: { Location: `/auth/login?redirect=${encodeURIComponent(url.pathname)}` } });
+      if (ev.vis !== 'public' && !isOwner(user) && !chkVis(user, ev.vis, ev.au, ev.owner)) return new Response('Access denied', { status: 403 });
+      const h = new Headers(); obj.writeHttpMetadata(h); h.set('etag', obj.httpEtag);
+      const ext = key.split('.').pop().toLowerCase();
+      const types = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', txt: 'text/plain', mp4: 'video/mp4', webp: 'image/webp' };
+      h.set('Content-Type', types[ext] || 'application/octet-stream');
+      return new Response(obj.body, { headers: h });
+    }
+
     if (!user) return new Response(null, { status: 302, headers: { Location: `/auth/login?redirect=${encodeURIComponent(url.pathname)}` } });
 
     // UPLOAD
@@ -49,9 +77,16 @@ export default {
       const orig = req.headers.get('X-File-Name');
       if (!orig) return new Response('Missing filename', { status: 400 });
       if (!isMember(user) && !orig.toLowerCase().endsWith('.pdf')) return new Response('Viewers can only upload PDF files.', { status: 403 });
-      const vis = req.headers.get('X-Visibility') || 'inherit';
-      const au = req.headers.get('X-Allowed-Users') || '';
       const folder = (req.headers.get('X-Folder') || '').trim().replace(/\/$/, '');
+      // Folder permission overrides whatever the user chose
+      let vis = req.headers.get('X-Visibility') || 'only-me';
+      let au = req.headers.get('X-Allowed-Users') || '';
+      if (folder) {
+        try {
+          const fm = await env.BUCKET.head('.folder:' + folder);
+          if (fm?.customMetadata?.visibility) { vis = normalizeVis(fm.customMetadata.visibility); au = fm.customMetadata.allowed_users || ''; }
+        } catch (e) { }
+      }
       try {
         let base = orig.replace(/[^\x00-\x7F]/g, '').trim();
         let key = folder ? `${folder}/${base}` : base, c = 1;
@@ -67,7 +102,7 @@ export default {
         const { name, parentPath } = await req.json();
         if (!name || name.includes('/') || name.startsWith('.')) return new Response('Invalid folder name', { status: 400 });
         const path = parentPath ? `${parentPath}/${name}` : name;
-        await env.BUCKET.put('.folder:' + path, '', { customMetadata: { uploader: user.username, visibility: 'inherit', allowed_users: '' } });
+        await env.BUCKET.put('.folder:' + path, '', { customMetadata: { uploader: user.username, visibility: 'only-me', allowed_users: '' } });
         return new Response(path);
       } catch (e) { return new Response(e.message, { status: 500 }); }
     }
@@ -163,19 +198,7 @@ export default {
       return new Response(renderDash(user, vf, folders, ul, cp), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
-    // SERVE FILE
-    if (url.pathname.startsWith('/vault/file/')) {
-      const key = decodeURIComponent(url.pathname.replace('/vault/file/', ''));
-      const obj = await env.BUCKET.get(key);
-      if (!obj) return new Response('404', { status: 404 });
-      const m = obj.customMetadata || {};
-      if (!await resolveAccess(user, key, m, env)) return new Response('Access denied', { status: 403 });
-      const h = new Headers(); obj.writeHttpMetadata(h); h.set('etag', obj.httpEtag);
-      const ext = key.split('.').pop().toLowerCase();
-      const types = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', txt: 'text/plain', mp4: 'video/mp4', webp: 'image/webp' };
-      h.set('Content-Type', types[ext] || 'application/octet-stream');
-      return new Response(obj.body, { headers: h });
-    }
+
     return new Response('404', { status: 404 });
   }
 };
@@ -260,7 +283,7 @@ header{display:flex;justify-content:space-between;align-items:center;min-height:
 .scard.ac-only-me{border-color:#64748b;background:rgba(100,116,139,.08)}
 .scard.ac-vault{border-color:var(--good);background:rgba(16,185,129,.07)}
 .scard.ac-people{border-color:var(--p);background:rgba(99,102,241,.08)}
-.scard.ac-inherit{border-color:var(--warn);background:rgba(245,158,11,.07)}
+.scard.ac-public{border-color:var(--warn);background:rgba(245,158,11,.07)}
 .si{font-size:1.3em;margin-bottom:4px;display:block}
 .st{font-size:.82em;font-weight:700;color:var(--txt);margin-bottom:2px}
 .sd{font-size:.71em;color:var(--muted);line-height:1.35}
@@ -336,10 +359,9 @@ function renderHeader(user) {
   </div>`;
 }
 
-function shareCards(currentVis, idPrefix, inFolder) {
-  const opts = ['only-me', 'vault', 'people'];
-  if (inFolder) opts.push('inherit');
-  const descs = { 'only-me': 'Only you and owners can open this.', 'vault': 'All vault members can see and download.', 'people': 'Only the people you select have access.', 'inherit': 'Adopt the permission from the parent folder.' };
+function shareCards(currentVis, idPrefix) {
+  const opts = ['only-me', 'vault', 'people', 'public'];
+  const descs = { 'only-me': 'Only you and owners can open this.', 'vault': 'All vault members can see and download.', 'people': 'Only the people you select have access.', 'public': 'Anyone with the link can access — no login required.' };
   return opts.map(v => `<label class="scard${v === currentVis ? ' ac-' + v : ''}" id="${idPrefix}-${v}" onclick="${idPrefix}Sel('${v}')"><input type="radio" name="${idPrefix}vis" value="${v}"${v === currentVis ? ' checked' : ''}><span class="si">${VIS_META[v]?.icon}</span><div class="st">${VIS_META[v]?.label}</div><div class="sd">${descs[v]}</div></label>`).join('');
 }
 
@@ -376,14 +398,17 @@ function renderDash(user, files, folders, userList, currentPath) {
   }).join('');
 
   const allRows = [
-    ...folders.map(f => `<tr class="crow" onclick="navigate('${esc(f.path)}')" ondragover="event.stopPropagation();event.preventDefault();this.classList.add('dr')" ondragleave="this.classList.remove('dr')" ondrop="dropMove(event,'${esc(f.path)}');this.classList.remove('dr')">
+    ...folders.map(f => {
+      const fOwnerRole = normalizeRole(userList.find(u => u.username === f.uploader)?.role || 'viewer');
+      return `<tr class="crow" onclick="navigate('${esc(f.path)}')" ondragover="event.stopPropagation();event.preventDefault();this.classList.add('dr')" ondragleave="this.classList.remove('dr')" ondrop="dropMove(event,'${esc(f.path)}');this.classList.remove('dr')">
       <td><span style="margin-right:8px;font-size:1.1em">📁</span><strong>${f.name}</strong></td>
-      <td style="color:var(--dim)">—</td><td>${visPill(f.visibility)}</td><td style="color:var(--dim)">—</td>
+      <td>${f.uploader ? utag(f.uploader, fOwnerRole) : '<span style="color:var(--dim)">—</span>'}</td><td>${visPill(f.visibility)}</td><td style="color:var(--dim)">—</td>
       <td onclick="event.stopPropagation()"><span style="display:flex;gap:4px">
         <button class="btn-sm btn-edit" onclick="openVis('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}')" title="Edit sharing">✏️</button>
         ${isOwner(user) || f.uploader === user.username ? `<button class="btn-sm btn-del" onclick="delFolder('${esc(f.path)}')" title="Delete">✕</button>` : ''}
       </span></td>
-    </tr>`),
+    </tr>`;
+    }),
     ...files.map(f => {
       const canAct = isOwner(user) || f.uploader === user.username;
       const disp = inFolder ? f.key.replace(prefix, '') : f.key;
@@ -421,7 +446,7 @@ function renderDash(user, files, folders, userList, currentPath) {
       <button class="btn-ghost btn-sm" onclick="cancelUpload()">Cancel</button>
     </div>
     <div style="font-size:.85em;font-weight:600;color:var(--muted);margin-bottom:8px">Who can access?</div>
-    <div class="scards" id="up-cards">${shareCards('inherit', 'up', inFolder)}</div>
+    <div class="scards" id="up-cards">${shareCards('only-me', 'up')}</div>
     <div id="up-people" style="display:none;margin-top:8px">
       <select id="up-users" multiple style="height:90px">${userOpts}</select>
     </div>
@@ -442,7 +467,7 @@ function renderDash(user, files, folders, userList, currentPath) {
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">Edit Visibility</span><button onclick="closeVis()" style="background:none;border:none;color:var(--muted);font-size:1.1em;padding:4px 8px;cursor:pointer">✕</button></div>
       <div id="vm-fn" style="font-size:.82em;color:var(--dim);margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-      <div class="scards" id="vm-cards">${shareCards('only-me', 'vm', true)}</div>
+      <div class="scards" id="vm-cards">${shareCards('only-me', 'vm')}</div>
       <div id="vm-people" style="display:none;margin-top:8px">
         <div style="font-size:.83em;color:var(--muted);font-weight:500;margin-bottom:6px">Select people</div>
         <select id="vm-users" multiple style="height:100px">${userOpts}</select>
