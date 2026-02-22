@@ -117,6 +117,22 @@ export default {
       return new Response('Deleted');
     }
 
+    // ── API: UPDATE VISIBILITY ───────────────────────────────────────────────
+    if (url.pathname === '/vault/api/update-visibility' && method === 'POST') {
+      try {
+        const { key, visibility, allowed_users } = await req.json();
+        const obj = await env.BUCKET.get(key);
+        if (!obj) return new Response('Not found', { status: 404 });
+        const fileOwner = obj.customMetadata?.uploader || '';
+        if (!isOwner(user) && fileOwner !== user.username)
+          return new Response('Permission denied', { status: 403 });
+        const newMeta = { ...obj.customMetadata, visibility, allowed_users: allowed_users || '' };
+        // Re-put with updated metadata (R2 has no metadata-only update)
+        await env.BUCKET.put(key, obj.body, { customMetadata: newMeta });
+        return new Response('OK');
+      } catch (e) { return new Response(e.message, { status: 500 }); }
+    }
+
     // ── API: USER MANAGEMENT ─────────────────────────────────────────────────
     if (url.pathname === '/vault/api/users' && method === 'POST') {
       if (!isOwner(user)) return new Response('Forbidden', { status: 403 });
@@ -269,6 +285,8 @@ header{display:flex;justify-content:space-between;align-items:center;min-height:
 .vis-people{background:rgba(99,102,241,0.12);color:#a5b4fc;border:1px solid rgba(99,102,241,0.2)}
 .btn-del{background:rgba(244,63,94,0.1);color:var(--err);border:1px solid rgba(244,63,94,0.2);padding:5px 10px;font-size:0.78em;font-weight:600;border-radius:8px}
 .btn-del:hover{background:rgba(244,63,94,0.2);transform:none}
+.btn-edit{background:rgba(255,255,255,0.05);color:var(--txt-muted);border:1px solid var(--border);padding:5px 8px;font-size:0.78em;border-radius:8px}
+.btn-edit:hover{background:rgba(255,255,255,0.1);transform:none}
 /* SHARING CARDS */
 .share-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
 .share-card{position:relative;padding:14px 16px;border-radius:12px;border:2px solid var(--border);background:rgba(255,255,255,0.02);cursor:pointer;transition:all 0.18s;user-select:none}
@@ -397,9 +415,10 @@ function renderDash(user, files, userList) {
         </div>
         <div class="file-meta">
           ${uploaderTag(f.uploader, f.uploaderRole)}
-          ${visPill(f.visibility)}
+          <span class="vis-pill vis-${f.visibility}" style="cursor:default">${VIS_META[f.visibility]?.icon || '🔒'} ${VIS_META[f.visibility]?.label || 'Only me'}</span>
           <small style="color:var(--txt-dim)">${(f.size / 1024).toFixed(1)} KB</small>
-          ${canDel ? `<button class="btn-del" onclick="delFile('${f.key}')">✕</button>` : ''}
+          ${(isOwner(user) || f.uploader === user.username) ? `<button class="btn-edit" onclick="openVisModal('${f.key.replace(/'/g, "&#39;")}','${f.visibility}','${f.allowed_users.replace(/'/g, "&#39;")}')" title="Edit visibility">✏️</button>` : ''}
+          ${canDel ? `<button class="btn-del" onclick="delFile('${f.key.replace(/'/g, "&#39;")}')">✕</button>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -483,6 +502,51 @@ function renderDash(user, files, userList) {
       ${fileRows}
     </div>
 
+    <!-- Visibility Edit Modal -->
+    <div id="vis-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)" onclick="if(event.target===this)closeVisModal()">
+      <div style="background:#161b22;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:28px;width:100%;max-width:520px;box-shadow:0 32px 80px rgba(0,0,0,0.7)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-weight:700;font-size:1em">Edit Visibility</span>
+          <button onclick="closeVisModal()" style="background:none;border:none;color:#94a3b8;font-size:1.1em;padding:4px 8px;cursor:pointer;line-height:1">✕</button>
+        </div>
+        <div id="vm-filename" style="font-size:0.82em;color:#64748b;margin-bottom:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+        <div class="share-cards">
+          <label class="share-card" id="vm-card-only-me" onclick="vmSelectVis('only-me')">
+            <input type="radio" name="mvis" value="only-me">
+            <span class="share-icon">🔒</span>
+            <div class="share-title">Only me</div>
+            <div class="share-desc">Private — only you and owners can see this.</div>
+          </label>
+          <label class="share-card" id="vm-card-vault" onclick="vmSelectVis('vault')">
+            <input type="radio" name="mvis" value="vault">
+            <span class="share-icon">🏢</span>
+            <div class="share-title">Everyone in vault</div>
+            <div class="share-desc">All vault members can see and download this.</div>
+          </label>
+          <label class="share-card" id="vm-card-people" onclick="vmSelectVis('people')">
+            <input type="radio" name="mvis" value="people">
+            <span class="share-icon">👥</span>
+            <div class="share-title">Specific people</div>
+            <div class="share-desc">Only the people you select can access this.</div>
+          </label>
+        </div>
+        <div id="vm-people" style="display:none;margin-top:12px">
+          <div style="font-size:0.83em;color:#94a3b8;font-weight:500;margin-bottom:6px">Select people</div>
+          <select id="vm-users" multiple>
+            ${userList.filter(u => u.username !== user.username).map(u => {
+      const rm = ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer;
+      return `<option value="${u.username}">${u.username} \u2014 ${rm.label}</option>`;
+    }).join('')}
+          </select>
+          <small style="color:#475569;display:block;margin-top:4px">Hold Ctrl / \u2318 to select multiple</small>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+          <button onclick="closeVisModal()" style="background:rgba(255,255,255,0.05);color:#94a3b8;border:1px solid rgba(255,255,255,0.08)">Cancel</button>
+          <button id="vm-save-btn" onclick="saveVisibility()">Save changes</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       function selectVis(val) {
         ['only-me','vault','people'].forEach(v => {
@@ -529,6 +593,63 @@ function renderDash(user, files, userList) {
         if (!confirm('Delete "' + key + '"? This cannot be undone.')) return;
         const res = await fetch('/vault/api/delete/' + encodeURIComponent(key));
         if (res.ok) location.reload(); else alert(await res.text());
+      }
+
+      // ── VISIBILITY MODAL ──────────────────────────────────────────────────
+      let _modalKey = '';
+
+      function openVisModal(key, currentVis, currentAllowed) {
+        _modalKey = key;
+        document.getElementById('vm-filename').textContent = '📄 ' + key;
+        // Select current card
+        ['only-me','vault','people'].forEach(v => {
+          const card = document.getElementById('vm-card-' + v);
+          card.className = 'share-card' + (v === currentVis ? ' active-' + v : '');
+          card.querySelector('input').checked = v === currentVis;
+        });
+        // Pre-select allowed users
+        const sel = document.getElementById('vm-users');
+        if (sel && currentAllowed) {
+          const names = currentAllowed.split(',').map(s => s.trim());
+          Array.from(sel.options).forEach(o => o.selected = names.includes(o.value));
+        }
+        vmSelectVis(currentVis);
+        document.getElementById('vis-modal').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+      }
+
+      function closeVisModal() {
+        document.getElementById('vis-modal').style.display = 'none';
+        document.body.style.overflow = '';
+      }
+
+      function vmSelectVis(val) {
+        ['only-me','vault','people'].forEach(v => {
+          const card = document.getElementById('vm-card-' + v);
+          if (!card) return;
+          card.className = 'share-card' + (v === val ? ' active-' + v : '');
+          card.querySelector('input').checked = v === val;
+        });
+        const pp = document.getElementById('vm-people');
+        if (pp) pp.style.display = val === 'people' ? 'block' : 'none';
+      }
+
+      async function saveVisibility() {
+        const vis = document.querySelector('#vis-modal input[name=mvis]:checked')?.value || 'only-me';
+        const sel = document.getElementById('vm-users');
+        const allowed = sel ? Array.from(sel.selectedOptions).map(o => o.value).join(',') : '';
+        if (vis === 'people' && sel && !allowed) {
+          return alert('Please select at least one person, or choose a different visibility.');
+        }
+        const btn = document.getElementById('vm-save-btn');
+        btn.textContent = 'Saving…'; btn.disabled = true;
+        const res = await fetch('/vault/api/update-visibility', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: _modalKey, visibility: vis, allowed_users: allowed })
+        });
+        if (res.ok) location.reload();
+        else { alert('Error: ' + await res.text()); btn.textContent = 'Save'; btn.disabled = false; }
       }
     <\/script>
   </body></html > `;
