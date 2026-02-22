@@ -288,10 +288,23 @@ header{display:flex;justify-content:space-between;align-items:center;min-height:
 .vp-vault{background:rgba(16,185,129,.1);color:var(--good);border:1px solid rgba(16,185,129,.2)}
 .vp-people{background:rgba(99,102,241,.12);color:#a5b4fc;border:1px solid rgba(99,102,241,.2)}
 .vp-inherit{background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2)}
+.vp-public{background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2)}
 /* BTNS */
 .btn-sm{padding:5px 10px;font-size:.8em;border-radius:7px}
 .btn-del{background:rgba(244,63,94,.1);color:var(--err);border:1px solid rgba(244,63,94,.2)} .btn-del:hover{background:rgba(244,63,94,.2);transform:none}
 .btn-edit{background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border)} .btn-edit:hover{background:rgba(255,255,255,.1);transform:none}
+.btn-share{background:rgba(99,102,241,.1);color:#a5b4fc;border:1px solid rgba(99,102,241,.25)} .btn-share:hover{background:rgba(99,102,241,.2);transform:none}
+/* USER CHECKBOXES */
+.user-check-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;padding:4px 0}
+.ucl-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid var(--border);cursor:pointer;transition:background .15s}
+.ucl-item:hover{background:rgba(99,102,241,.07)}
+.ucl-item input[type=checkbox]{width:15px;height:15px;accent-color:var(--p);cursor:pointer;flex-shrink:0}
+.ucl-item .ucl-name{font-size:.88em;font-weight:500}
+.ucl-item .ucl-role{font-size:.73em;color:var(--muted);margin-left:auto}
+/* SHARE MODAL URL BOX */
+.share-url-box{display:flex;gap:6px;align-items:center;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:9px;padding:8px 12px;margin-bottom:14px}
+.share-url-box span{flex:1;font-size:.8em;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace}
+.share-url-box button{flex-shrink:0;padding:5px 11px;font-size:.78em}
 /* SHARE CARDS */
 .scards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .scard{position:relative;padding:12px 14px;border-radius:11px;border:2px solid var(--border);background:rgba(255,255,255,.02);cursor:pointer;transition:all .18s;user-select:none}
@@ -394,6 +407,7 @@ function renderDash(user, files, folders, userList, currentPath) {
     <div style="display:flex;align-items:flex-start;justify-content:space-between">
       <span class="folder-icon">📁</span>
       <div class="folder-actions">
+        <button class="btn-sm btn-share" onclick="event.stopPropagation();openShare('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}',true)" title="Share">🔗</button>
         <button class="btn-sm btn-edit" onclick="event.stopPropagation();openVis('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}')" title="Edit sharing">✏️</button>
         ${isOwner(user) || f.uploader === user.username ? `<button class="btn-sm btn-del" onclick="event.stopPropagation();delFolder('${esc(f.path)}')" title="Delete folder">✕</button>` : ''}
       </div>
@@ -421,6 +435,7 @@ function renderDash(user, files, folders, userList, currentPath) {
       <td><span style="margin-right:8px;font-size:1.1em">📁</span><strong>${f.name}</strong></td>
       <td>${f.uploader ? utag(f.uploader, fOwnerRole) : '<span style="color:var(--dim)">—</span>'}</td><td>${visPill(f.visibility)}</td><td style="color:var(--dim)">—</td>
       <td onclick="event.stopPropagation()"><span style="display:flex;gap:4px">
+        <button class="btn-sm btn-share" onclick="openShare('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}',true)" title="Share">🔗</button>
         <button class="btn-sm btn-edit" onclick="openVis('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}')" title="Edit sharing">✏️</button>
         ${isOwner(user) || f.uploader === user.username ? `<button class="btn-sm btn-del" onclick="delFolder('${esc(f.path)}')" title="Delete">✕</button>` : ''}
       </span></td>
@@ -434,7 +449,10 @@ function renderDash(user, files, folders, userList, currentPath) {
         <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="margin-right:8px">${icon}</span><a href="/vault/file/${encodeURIComponent(f.key)}" target="_blank">${disp}</a></td>
         <td>${utag(f.uploader, f.uploaderRole)}</td><td>${visPill(f.visibility)}</td>
         <td style="color:var(--dim)">${(f.size / 1024).toFixed(1)} KB</td>
-        <td><span style="display:flex;gap:4px">${canAct ? `<button class="btn-sm btn-edit" onclick="openVis('${esc(f.key)}','${f.visibility}','${esc(f.allowed_users)}')" title="Sharing">✏️</button><button class="btn-sm btn-del" onclick="delFile('${esc(f.key)}')" title="Delete">✕</button>` : ''}</span></td>
+        <td><span style="display:flex;gap:4px">
+          <button class="btn-sm btn-share" onclick="openShare('${esc(f.key)}','${f.visibility}','${esc(f.allowed_users)}',false)" title="Share">🔗</button>
+          ${canAct ? `<button class="btn-sm btn-edit" onclick="openVis('${esc(f.key)}','${f.visibility}','${esc(f.allowed_users)}')" title="Edit sharing">✏️</button><button class="btn-sm btn-del" onclick="delFile('${esc(f.key)}')" title="Delete">✕</button>` : ''}
+        </span></td>
       </tr>`;
     })
   ].join('');
@@ -465,7 +483,8 @@ function renderDash(user, files, folders, userList, currentPath) {
     <div style="font-size:.85em;font-weight:600;color:var(--muted);margin-bottom:8px">Who can access?</div>
     <div class="scards" id="up-cards">${shareCards('only-me', 'up')}</div>
     <div id="up-people" style="display:none;margin-top:8px">
-      <select id="up-users" multiple style="height:90px">${userOpts}</select>
+      <div style="font-size:.83em;color:var(--muted);font-weight:500;margin-bottom:6px">Select people</div>
+      <div class="user-check-list" id="up-users-list">${otherUsers.map(u => { const rm = ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer; return `<label class="ucl-item"><input type="checkbox" name="up-user" value="${esc(u.username)}"><span class="ucl-name">${u.username}</span><span class="ucl-role">${rm.icon} ${rm.label}</span></label>`; }).join('')}</div>
     </div>
     <div class="bar-wrap"><div id="pb" class="bar"></div></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
@@ -487,11 +506,33 @@ function renderDash(user, files, folders, userList, currentPath) {
       <div class="scards" id="vm-cards">${shareCards('only-me', 'vm')}</div>
       <div id="vm-people" style="display:none;margin-top:8px">
         <div style="font-size:.83em;color:var(--muted);font-weight:500;margin-bottom:6px">Select people</div>
-        <select id="vm-users" multiple style="height:100px">${userOpts}</select>
+        <div class="user-check-list" id="vm-users-list">${otherUsers.map(u => { const rm = ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer; return `<label class="ucl-item"><input type="checkbox" name="vm-user" value="${esc(u.username)}"><span class="ucl-name">${u.username}</span><span class="ucl-role">${rm.icon} ${rm.label}</span></label>`; }).join('')}</div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
         <button onclick="closeVis()" class="btn-ghost">Cancel</button>
         <button id="vm-save" onclick="saveVis()">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Share modal -->
+  <div class="modal-bg" id="share-modal" onclick="if(event.target===this)closeShare()">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-weight:700">🔗 Share</span><button onclick="closeShare()" style="background:none;border:none;color:var(--muted);font-size:1.1em;padding:4px 8px;cursor:pointer">✕</button></div>
+      <div id="sm-fn" style="font-size:.82em;color:var(--dim);margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      <div id="sm-url-wrap" style="display:none">
+        <div style="font-size:.8em;font-weight:600;color:var(--muted);margin-bottom:6px">Public link</div>
+        <div class="share-url-box"><span id="sm-url"></span><button class="btn-sm" onclick="copyShareUrl()" id="sm-copy-btn">Copy</button></div>
+      </div>
+      <div style="font-size:.85em;font-weight:600;color:var(--muted);margin-bottom:8px">Who can access?</div>
+      <div class="scards" id="sm-cards">${shareCards('only-me', 'sm')}</div>
+      <div id="sm-people" style="display:none;margin-top:8px">
+        <div style="font-size:.83em;color:var(--muted);font-weight:500;margin-bottom:6px">Select people</div>
+        <div class="user-check-list" id="sm-users-list">${otherUsers.map(u => { const rm = ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer; return `<label class="ucl-item"><input type="checkbox" name="sm-user" value="${esc(u.username)}"><span class="ucl-name">${u.username}</span><span class="ucl-role">${rm.icon} ${rm.label}</span></label>`; }).join('')}</div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button onclick="closeShare()" class="btn-ghost">Cancel</button>
+        <button id="sm-save" onclick="saveShare()">Save changes</button>
       </div>
     </div>
   </div>
@@ -508,15 +549,15 @@ function renderDash(user, files, folders, userList, currentPath) {
     function cancelUpload(){_files=null;document.getElementById('up-settings').style.display='none';document.getElementById('pb').style.width='0%';document.getElementById('st').textContent='Ready';}
     function handleDrop(e){e.preventDefault();document.getElementById('dz').classList.remove('over');filesSelected(e.dataTransfer.files);}
     function upSel(v){
-      ['only-me','vault','people','inherit'].forEach(x=>{const c=document.getElementById('up-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
+      ['only-me','vault','people','public'].forEach(x=>{const c=document.getElementById('up-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
       document.getElementById('up-people').style.display=v==='people'?'block':'none';
     }
     async function startUpload(){
       if(!_files||!_files.length)return;
       const vis=document.querySelector('input[name=upvis]:checked')?.value||'inherit';
-      const sel=document.getElementById('up-users');
-      const au=sel?Array.from(sel.selectedOptions).map(o=>o.value).join(','):'';
-      if(vis==='people'&&sel&&!au)return alert('Select at least one person or choose a different option.');
+      const checked=document.querySelectorAll('input[name=up-user]:checked');
+      const au=Array.from(checked).map(o=>o.value).join(',');
+      if(vis==='people'&&!au)return alert('Select at least one person or choose a different option.');
       const files=Array.from(_files);
       let done=0;
       for(const f of files){
@@ -582,21 +623,57 @@ function renderDash(user, files, folders, userList, currentPath) {
       _vmKey=key;
       document.getElementById('vm-fn').textContent=(key.startsWith('.folder:')?'📁 ':'📄 ')+(key.startsWith('.folder:')?key.replace('.folder:',''):key.split('/').pop());
       vmSel(curVis);
-      if(curAU){const s=document.getElementById('vm-users');if(s){const ns=curAU.split(',').map(x=>x.trim());Array.from(s.options).forEach(o=>o.selected=ns.includes(o.value));}}
+      if(curAU){const ns=curAU.split(',').map(x=>x.trim());document.querySelectorAll('input[name=vm-user]').forEach(cb=>cb.checked=ns.includes(cb.value));}
       document.getElementById('vis-modal').style.display='flex';document.body.style.overflow='hidden';
     }
     function vmSel(v){
-      ['only-me','vault','people','inherit'].forEach(x=>{const c=document.getElementById('vm-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
+      ['only-me','vault','people','public'].forEach(x=>{const c=document.getElementById('vm-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
       const pp=document.getElementById('vm-people');if(pp)pp.style.display=v==='people'?'block':'none';
     }
     function closeVis(){document.getElementById('vis-modal').style.display='none';document.body.style.overflow='';}
     async function saveVis(){
       const vis=document.querySelector('input[name=vmvis]:checked')?.value||'only-me';
-      const sel=document.getElementById('vm-users');
-      const au=sel?Array.from(sel.selectedOptions).map(o=>o.value).join(','):'';
-      if(vis==='people'&&sel&&!au)return alert('Select at least one person.');
+      const checked=document.querySelectorAll('input[name=vm-user]:checked');
+      const au=Array.from(checked).map(o=>o.value).join(',');
+      if(vis==='people'&&!au)return alert('Select at least one person.');
       const btn=document.getElementById('vm-save');btn.textContent='Saving…';btn.disabled=true;
       const res=await fetch('/vault/api/update-visibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:_vmKey,visibility:vis,allowed_users:au})});
+      if(res.ok)location.reload();else{alert(await res.text());btn.textContent='Save changes';btn.disabled=false;}
+    }
+
+    // Share modal
+    let _smKey='',_smIsFolder=false;
+    function openShare(key,curVis,curAU,isFolder){
+      _smKey=key;_smIsFolder=isFolder;
+      const label=key.startsWith('.folder:')?key.replace('.folder:',''):key.split('/').pop();
+      document.getElementById('sm-fn').textContent=(isFolder?'📁 ':'📄 ')+label;
+      // URL box — only for files (not folders)
+      const urlWrap=document.getElementById('sm-url-wrap');
+      if(!isFolder){
+        const fileKey=key.startsWith('.folder:')?key.replace('.folder:',''):key;
+        document.getElementById('sm-url').textContent=location.origin+'/vault/file/'+encodeURIComponent(fileKey);
+        urlWrap.style.display='block';
+      } else { urlWrap.style.display='none'; }
+      smSel(curVis);
+      if(curAU){const ns=curAU.split(',').map(x=>x.trim());document.querySelectorAll('input[name=sm-user]').forEach(cb=>cb.checked=ns.includes(cb.value));}
+      document.getElementById('share-modal').style.display='flex';document.body.style.overflow='hidden';
+    }
+    function smSel(v){
+      ['only-me','vault','people','public'].forEach(x=>{const c=document.getElementById('sm-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
+      const pp=document.getElementById('sm-people');if(pp)pp.style.display=v==='people'?'block':'none';
+    }
+    function closeShare(){document.getElementById('share-modal').style.display='none';document.body.style.overflow='';}
+    async function copyShareUrl(){
+      const url=document.getElementById('sm-url').textContent;
+      try{await navigator.clipboard.writeText(url);const btn=document.getElementById('sm-copy-btn');btn.textContent='Copied!';btn.style.color='var(--good)';setTimeout(()=>{btn.textContent='Copy';btn.style.color='';},2000);}catch(e){alert('Copy failed: '+e);}
+    }
+    async function saveShare(){
+      const vis=document.querySelector('input[name=smvis]:checked')?.value||'only-me';
+      const checked=document.querySelectorAll('input[name=sm-user]:checked');
+      const au=Array.from(checked).map(o=>o.value).join(',');
+      if(vis==='people'&&!au)return alert('Select at least one person.');
+      const btn=document.getElementById('sm-save');btn.textContent='Saving…';btn.disabled=true;
+      const res=await fetch('/vault/api/update-visibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:_smKey,visibility:vis,allowed_users:au})});
       if(res.ok)location.reload();else{alert(await res.text());btn.textContent='Save changes';btn.disabled=false;}
     }
   <\/script>
