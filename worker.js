@@ -118,6 +118,22 @@ export default {
       } catch (e) { return new Response(e.message, { status: 500 }); }
     }
 
+    // MOVE FILE
+    if (url.pathname === '/vault/api/move' && method === 'POST') {
+      try {
+        const { oldKey, newFolder } = await req.json();
+        const obj = await env.BUCKET.get(oldKey);
+        if (!obj) return new Response('Not found', { status: 404 });
+        if (!isOwner(user) && obj.customMetadata?.uploader !== user.username) return new Response('Forbidden', { status: 403 });
+        const fname = oldKey.split('/').pop();
+        const newKey = newFolder ? newFolder + '/' + fname : fname;
+        if (newKey === oldKey) return new Response('Same location', { status: 400 });
+        await env.BUCKET.put(newKey, obj.body, { customMetadata: obj.customMetadata });
+        await env.BUCKET.delete(oldKey);
+        return new Response('OK');
+      } catch (e) { return new Response(e.message, { status: 500 }); }
+    }
+
     // ADMIN PANEL
     if (url.pathname === '/vault/admin') {
       if (!isOwner(user)) return new Response('Forbidden', { status: 403 });
@@ -221,6 +237,10 @@ header{display:flex;justify-content:space-between;align-items:center;min-height:
 .ftable td{padding:11px 12px;border-bottom:1px solid var(--border);font-size:.9em;vertical-align:middle}
 .ftable tr:last-child td{border-bottom:none}
 .ftable tr:hover td{background:rgba(255,255,255,.015)}
+.ftable tr.crow{cursor:pointer}.ftable tr.fcrow{cursor:grab}.ftable tr.fcrow:active{cursor:grabbing}
+.ftable tr.dr td{background:rgba(99,102,241,.1)!important;outline:2px dashed var(--p)}
+.bc-link{padding:3px 8px;border-radius:8px;transition:background .15s}
+.bc-link.bc-hi{background:rgba(99,102,241,.18);outline:2px dashed var(--p)}
 /* TAGS + PILLS */
 .tag{font-size:.72em;font-weight:600;padding:2px 9px;border-radius:20px;letter-spacing:.02em;white-space:nowrap}
 .vpill{font-size:.7em;font-weight:600;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
@@ -327,7 +347,7 @@ function shareCards(currentVis, idPrefix, inFolder) {
 function renderDash(user, files, folders, userList, currentPath) {
   const inFolder = currentPath.length > 0;
   const parts = currentPath ? currentPath.split('/') : [], prefix = currentPath ? currentPath + '/' : '';
-  const bcLinks = [`<a href="/vault">🏠 Home</a>`, ...parts.map((_, i) => { const p = parts.slice(0, i + 1).join('/'); return `<span class="bc-sep">/</span><a href="/vault?path=${encodeURIComponent(p)}">${parts[i]}</a>`; })].join('');
+  const bcLinks = [`<a href="/vault" class="bc-link" ondragover="event.preventDefault();this.classList.add('bc-hi')" ondragleave="this.classList.remove('bc-hi')" ondrop="dropMove(event,'')">🏠 Home</a>`, ...parts.map((_, i) => { const p = parts.slice(0, i + 1).join('/'); return `<span class="bc-sep">/</span><a href="/vault?path=${encodeURIComponent(p)}" class="bc-link" ondragover="event.preventDefault();this.classList.add('bc-hi')" ondragleave="this.classList.remove('bc-hi')" ondrop="dropMove(event,'${p}')">${parts[i]}</a>`; })].join('');
   const otherUsers = userList.filter(u => u.username !== user.username);
   const userOpts = otherUsers.map(u => { const rm = ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer; return `<option value="${esc(u.username)}">${u.username} — ${rm.label}</option>`; }).join('');
 
@@ -355,16 +375,39 @@ function renderDash(user, files, folders, userList, currentPath) {
     </tr>`;
   }).join('');
 
+  const allRows = [
+    ...folders.map(f => `<tr class="crow" onclick="navigate('${esc(f.path)}')" ondragover="event.stopPropagation();event.preventDefault();this.classList.add('dr')" ondragleave="this.classList.remove('dr')" ondrop="dropMove(event,'${esc(f.path)}');this.classList.remove('dr')">
+      <td><span style="margin-right:8px;font-size:1.1em">📁</span><strong>${f.name}</strong></td>
+      <td style="color:var(--dim)">—</td><td>${visPill(f.visibility)}</td><td style="color:var(--dim)">—</td>
+      <td onclick="event.stopPropagation()"><span style="display:flex;gap:4px">
+        <button class="btn-sm btn-edit" onclick="openVis('.folder:${esc(f.path)}','${f.visibility}','${esc(f.allowed_users)}')" title="Edit sharing">✏️</button>
+        ${isOwner(user) || f.uploader === user.username ? `<button class="btn-sm btn-del" onclick="delFolder('${esc(f.path)}')" title="Delete">✕</button>` : ''}
+      </span></td>
+    </tr>`),
+    ...files.map(f => {
+      const canAct = isOwner(user) || f.uploader === user.username;
+      const disp = inFolder ? f.key.replace(prefix, '') : f.key;
+      const icon = /\.(pdf)$/i.test(f.key) ? '📕' : /\.(png|jpg|jpeg|gif|webp)$/i.test(f.key) ? '🖼️' : /\.(mp4|mov|avi)$/i.test(f.key) ? '🎬' : '📄';
+      return `<tr class="crow${canAct ? ' fcrow' : ''}" ${canAct ? `draggable="true" ondragstart="fileDrag(event,'${esc(f.key)}')"` : ''}>
+        <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="margin-right:8px">${icon}</span><a href="/vault/file/${encodeURIComponent(f.key)}" target="_blank">${disp}</a></td>
+        <td>${utag(f.uploader, f.uploaderRole)}</td><td>${visPill(f.visibility)}</td>
+        <td style="color:var(--dim)">${(f.size / 1024).toFixed(1)} KB</td>
+        <td><span style="display:flex;gap:4px">${canAct ? `<button class="btn-sm btn-edit" onclick="openVis('${esc(f.key)}','${f.visibility}','${esc(f.allowed_users)}')" title="Sharing">✏️</button><button class="btn-sm btn-del" onclick="delFile('${esc(f.key)}')" title="Delete">✕</button>` : ''}</span></td>
+      </tr>`;
+    })
+  ].join('');
+  const emptyRow = `<tr><td colspan="5" style="text-align:center;color:var(--dim);padding:40px;cursor:pointer" onclick="document.getElementById('fi').click()"><div style="font-size:2em;margin-bottom:8px">☁️</div><div>Drop files here or <span style="color:var(--p)">click to upload</span></div>${!isMember(user) ? '<div style="font-size:.8em;margin-top:4px">PDF files only for your account</div>' : ''}</td></tr>`;
+
   return HEAD('111 Vault') + `<body>
   <header>${renderHeader(user)}</header>
-
   <div class="bc">${bcLinks}</div>
 
   <div class="toolbar">
-    <button class="btn-ghost" onclick="toggleNF()">📁 New Folder</button>
     <button onclick="document.getElementById('fi').click()">⬆ Upload</button>
-    ${inFolder ? `<span style="font-size:.82em;color:var(--dim)">in <strong style="color:var(--muted)">${currentPath}</strong></span>` : ''}
+    <button class="btn-ghost" onclick="toggleNF()">📁 New Folder</button>
+    ${inFolder ? `<span style="font-size:.82em;color:var(--dim)">Folder: <strong style="color:var(--muted)">${currentPath}</strong></span>` : ''}
   </div>
+  <input type="file" id="fi" style="display:none" ${!isMember(user) ? 'accept=".pdf"' : ''} multiple onchange="filesSelected(this.files)">
 
   <div class="nf-form" id="nf-form">
     <input id="nf-name" placeholder="Folder name" style="flex:1;min-width:160px" onkeydown="if(event.key==='Enter')createFolder()">
@@ -372,30 +415,15 @@ function renderDash(user, files, folders, userList, currentPath) {
     <button class="btn-ghost" onclick="toggleNF()">Cancel</button>
   </div>
 
-  ${folders.length > 0 ? `<div style="margin-bottom:6px;font-size:.8em;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase">Folders</div><div class="folder-grid">${folderCards}</div>` : ''}
-
-  <!-- Drop zone -->
-  <div class="dz" id="dz" onclick="document.getElementById('fi').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleDrop(event)">
-    <div style="font-size:2.2em;margin-bottom:8px">☁️</div>
-    <div style="font-weight:600;font-size:.95em;margin-bottom:4px">Drag files here or <span style="color:var(--p)">click to browse</span></div>
-    <div style="font-size:.78em;color:var(--dim)">${!isMember(user) ? 'PDF files only · ' : ''} Uploading into: <strong style="color:var(--muted)">${currentPath || 'Home'}</strong></div>
-  </div>
-  <input type="file" id="fi" style="display:none" ${!isMember(user) ? 'accept=".pdf"' : ''} multiple onchange="filesSelected(this.files)">
-
-  <!-- Upload settings panel (shows after selecting files) -->
   <div id="up-settings" style="display:none" class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <span id="up-filelist" style="font-size:.88em;font-weight:600;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%"></span>
       <button class="btn-ghost btn-sm" onclick="cancelUpload()">Cancel</button>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <span style="font-size:.86em;font-weight:600;color:var(--muted)">Who can access?</span>
-      ${tip("Choose who can see this file after upload. 'Inherited' follows the folder's setting.")}
-    </div>
+    <div style="font-size:.85em;font-weight:600;color:var(--muted);margin-bottom:8px">Who can access?</div>
     <div class="scards" id="up-cards">${shareCards('inherit', 'up', inFolder)}</div>
     <div id="up-people" style="display:none;margin-top:8px">
       <select id="up-users" multiple style="height:90px">${userOpts}</select>
-      <small style="color:var(--dim);display:block;margin-top:4px">Hold Ctrl / ⌘ to pick multiple</small>
     </div>
     <div class="bar-wrap"><div id="pb" class="bar"></div></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
@@ -404,9 +432,9 @@ function renderDash(user, files, folders, userList, currentPath) {
     </div>
   </div>
 
-  <div class="card">
-    <div style="font-size:.9em;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px">Files <span style="font-weight:400">(${files.length})</span></div>
-    <table class="ftable"><thead><tr><th>Name</th><th>Owner</th><th>Visibility</th><th>Size</th><th></th></tr></thead><tbody>${fileRows}</tbody></table>
+  <div class="card" id="filedrop" ondragover="event.preventDefault();this.style.outline='2px dashed var(--p)'" ondragleave="this.style.outline=''" ondrop="handleFileDrop(event)">
+    <table class="ftable"><thead><tr><th>Name</th><th>Owner</th><th>Access</th><th>Size</th><th></th></tr></thead>
+    <tbody>${allRows || emptyRow}</tbody></table>
   </div>
 
   <!-- Visibility modal -->
@@ -467,11 +495,24 @@ function renderDash(user, files, folders, userList, currentPath) {
       location.reload();
     }
     // Full-page drag overlay
-    let _dc=0;
+    let _dc=0,_dragKey=null;
     document.addEventListener('dragenter',e=>{if(e.dataTransfer.types.includes('Files')){_dc++;document.getElementById('drop-overlay').classList.add('show');}});
     document.addEventListener('dragleave',()=>{_dc--;if(_dc<=0){_dc=0;document.getElementById('drop-overlay').classList.remove('show');}});
     document.addEventListener('dragover',e=>e.preventDefault());
-    document.addEventListener('drop',e=>{e.preventDefault();_dc=0;document.getElementById('drop-overlay').classList.remove('show');filesSelected(e.dataTransfer.files);});
+    document.addEventListener('drop',e=>{e.preventDefault();_dc=0;document.getElementById('drop-overlay').classList.remove('show');if(e.dataTransfer.files.length)filesSelected(e.dataTransfer.files);});
+    // Handle drop on file table card
+    function handleFileDrop(e){e.currentTarget.style.outline='';if(e.dataTransfer.files.length){filesSelected(e.dataTransfer.files);}}
+    // File move by drag
+    function fileDrag(e,key){_dragKey=key;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',key);}
+    function dropMove(e,targetFolder){
+      e.preventDefault();e.stopPropagation();
+      if(e.currentTarget.classList)e.currentTarget.classList.remove('dr','bc-hi');
+      if(!_dragKey){return;}
+      const srcDir=_dragKey.includes('/')?_dragKey.split('/').slice(0,-1).join('/'):'';
+      if(srcDir===targetFolder){_dragKey=null;return;}
+      const k=_dragKey;_dragKey=null;
+      fetch('/vault/api/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oldKey:k,newFolder:targetFolder})})
+        .then(r=>r.ok?location.reload():r.text().then(t=>alert('Move failed: '+t)));
     }
 
     // New folder
