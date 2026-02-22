@@ -480,7 +480,7 @@ function renderDash(user, files, folders, userList, currentPath) {
     </div>
     <div style="font-size:.85em;font-weight:600;color:var(--muted);margin-bottom:8px">Who can access?</div>
     <div class="scards" id="up-cards">${shareCards('only-me', 'up')}</div>
-    <div id="up-people" style="display:none;margin-top:8px">
+    <div id="up-picker" style="display:none;margin-top:8px">
       <div style="font-size:.83em;color:var(--muted);font-weight:500;margin-bottom:6px">Select people</div>
       <div class="user-check-list" id="up-users-list">${otherUsers.map(u => { const rm = ROLE_META[normalizeRole(u.role)] || ROLE_META.viewer; return `<label class="ucl-item"><input type="checkbox" name="up-user" value="${esc(u.username)}"><span class="ucl-name">${u.username}</span><span class="ucl-role">${rm.icon} ${rm.label}</span></label>`; }).join('')}</div>
     </div>
@@ -507,7 +507,7 @@ function renderDash(user, files, folders, userList, currentPath) {
       </div>
       <div style="font-size:.85em;font-weight:600;color:var(--muted);margin-bottom:8px">Who can access?</div>
       <div class="scards" id="sm-cards">${shareCards('only-me', 'sm')}</div>
-      <div id="sm-people" style="display:none;margin-top:8px">
+      <div id="sm-picker" style="display:none;margin-top:8px">
         <div style="font-size:.83em;color:var(--muted);font-weight:500;margin-bottom:6px">Select people</div>
         <div class="user-check-list" id="sm-users-list"></div>
       </div>
@@ -531,7 +531,7 @@ function renderDash(user, files, folders, userList, currentPath) {
     function handleDrop(e){e.preventDefault();document.getElementById('dz').classList.remove('over');filesSelected(e.dataTransfer.files);}
     function upSel(v){
       ['only-me','vault','people','public'].forEach(x=>{const c=document.getElementById('up-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
-      document.getElementById('up-people').style.display=v==='people'?'block':'none';
+      document.getElementById('up-picker').style.display=v==='people'?'block':'none';
     }
     async function startUpload(){
       if(!_files||!_files.length)return;
@@ -644,7 +644,7 @@ function renderDash(user, files, folders, userList, currentPath) {
     }
     function smSel(v){
       ['only-me','vault','people','public'].forEach(x=>{const c=document.getElementById('sm-'+x);if(c){c.className='scard'+(x===v?' ac-'+x:'');c.querySelector('input').checked=x===v;}});
-      const pp=document.getElementById('sm-people');if(pp)pp.style.display=v==='people'?'block':'none';
+      const pp=document.getElementById('sm-picker');if(pp)pp.style.display=v==='people'?'block':'none';
     }
     function closeShare(){document.getElementById('share-modal').style.display='none';document.body.style.overflow='';}
     async function copyShareUrl(){
