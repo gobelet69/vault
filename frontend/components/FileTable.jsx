@@ -9,6 +9,7 @@ import {
   Eye,
   MoreHorizontal,
   CloudUpload,
+  Download,
 } from "lucide-react";
 
 function roleBadge(role) {
@@ -506,7 +507,20 @@ export function FileTable({
                     {relativeTime(file.updatedAt)}
                   </td>
                   <td>
-                    <ActionMenu ariaLabel={`File actions for ${file.displayName}`}>{renderActions(actions)}</ActionMenu>
+                    <div className="row-actions">
+                      {file.access?.canDownload !== false ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost row-actions-trigger"
+                          onClick={() => onDownload(file.key)}
+                          aria-label="Download"
+                          title="Download"
+                        >
+                          <Download size={15} />
+                        </button>
+                      ) : null}
+                      <ActionMenu ariaLabel={`File actions for ${file.displayName}`}>{renderActions(actions)}</ActionMenu>
+                    </div>
                   </td>
                 </tr>
               );

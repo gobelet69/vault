@@ -851,6 +851,12 @@ input::placeholder {
 .file-table tbody tr:hover .row-actions-trigger {
   opacity: 1;
 }
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  justify-content: flex-end;
+}
 .tag-row {
   display: flex;
   flex-wrap: wrap;

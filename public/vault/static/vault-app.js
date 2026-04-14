@@ -25591,6 +25591,13 @@ var Code = createLucideIcon("Code", [
   ["polyline", { points: "8 6 2 12 8 18", key: "1eg1df" }]
 ]);
 
+// node_modules/lucide-react/dist/esm/icons/download.js
+var Download = createLucideIcon("Download", [
+  ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
+  ["polyline", { points: "7 10 12 15 17 10", key: "2ggqvy" }],
+  ["line", { x1: "12", x2: "12", y1: "15", y2: "3", key: "1vk2je" }]
+]);
+
 // node_modules/lucide-react/dist/esm/icons/ellipsis.js
 var Ellipsis = createLucideIcon("Ellipsis", [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
@@ -26180,7 +26187,20 @@ function FileTable({
                   !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `access-badge ${visibilityClass(file.visibility)}`, children: visibilityLabel(file.visibility) }) }) : null,
                   !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", children: formatBytes(file.size) }) : null,
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", title: formatDate(file.updatedAt), children: relativeTime(file.updatedAt) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActionMenu, { ariaLabel: `File actions for ${file.displayName}`, children: renderActions(actions) }) })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "row-actions", children: [
+                    file.access?.canDownload !== false ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                      "button",
+                      {
+                        type: "button",
+                        className: "btn btn-sm btn-ghost row-actions-trigger",
+                        onClick: () => onDownload(file.key),
+                        "aria-label": "Download",
+                        title: "Download",
+                        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Download, { size: 15 })
+                      }
+                    ) : null,
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActionMenu, { ariaLabel: `File actions for ${file.displayName}`, children: renderActions(actions) })
+                  ] }) })
                 ] }, file.key);
               })
             ] })
@@ -28137,6 +28157,7 @@ lucide-react/dist/esm/icons/chevron-down.js:
 lucide-react/dist/esm/icons/chevron-right.js:
 lucide-react/dist/esm/icons/cloud-upload.js:
 lucide-react/dist/esm/icons/code.js:
+lucide-react/dist/esm/icons/download.js:
 lucide-react/dist/esm/icons/ellipsis.js:
 lucide-react/dist/esm/icons/eye.js:
 lucide-react/dist/esm/icons/file-plus.js:

@@ -934,6 +934,13 @@ input::placeholder {
   opacity: 1;
 }
 
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
 /* Tags */
 .tag-row {
   display: flex;
