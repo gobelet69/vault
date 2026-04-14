@@ -1,0 +1,22 @@
+{
+  "name": "vault-enterprise-worker",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:frontend",
+    "build:frontend": "esbuild frontend/main.jsx --bundle --format=esm --target=es2022 --outfile=public/vault/static/vault-app.js --loader:.css=css --jsx=automatic",
+    "check": "node --check src/worker.js"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.3",
+    "wrangler": "^4.11.1"
+  }
+}
