@@ -69,12 +69,6 @@ export async function recomputeUsedBytesFromStorage(env, username, { includeUnow
     });
     for (const object of listed.objects || []) {
       if (object.key.startsWith(".folder:")) continue;
-      const owner = object.customMetadata?.uploader || "";
-      if (owner) {
-        if (owner !== username) continue;
-      } else if (!includeUnowned) {
-        continue;
-      }
       total += Number(object.size || 0);
     }
     cursor = listed.truncated ? listed.cursor : undefined;
