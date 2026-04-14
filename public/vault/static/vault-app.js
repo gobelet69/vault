@@ -26307,7 +26307,10 @@ function FolderTree({
   onToggleFavorite,
   onDeleteFolder
 }) {
-  const nestedTree = (0, import_react17.useMemo)(() => makeTree(tree || []), [tree]);
+  const nestedTree = (0, import_react17.useMemo)(() => {
+    const visible = (tree || []).filter((item) => !item.name.startsWith("."));
+    return makeTree(visible);
+  }, [tree]);
   const favoriteItems = (favorites || []).slice(0, 12);
   const favoriteFolderSet = (0, import_react17.useMemo)(
     () => new Set(
@@ -28020,8 +28023,8 @@ function App() {
         /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           FileTable,
           {
-            folders: bootData.folders,
-            files: bootData.files,
+            folders: bootData.currentPath ? bootData.folders : bootData.folders.filter((f) => !f.name.startsWith(".")),
+            files: bootData.currentPath ? bootData.files : bootData.files.filter((f) => !(f.displayName || f.key).startsWith(".")),
             selectedKeys,
             viewMode,
             onNavigate: (path) => fetchBootstrap(path),

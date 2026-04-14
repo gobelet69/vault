@@ -923,8 +923,8 @@ export function App() {
               />
 
               <FileTable
-                folders={bootData.folders}
-                files={bootData.files}
+                folders={bootData.currentPath ? bootData.folders : bootData.folders.filter((f) => !f.name.startsWith("."))}
+                files={bootData.currentPath ? bootData.files : bootData.files.filter((f) => !(f.displayName || f.key).startsWith("."))}
                 selectedKeys={selectedKeys}
                 viewMode={viewMode}
                 onNavigate={(path) => fetchBootstrap(path)}

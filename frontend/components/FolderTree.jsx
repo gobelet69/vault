@@ -84,7 +84,10 @@ export function FolderTree({
   onToggleFavorite,
   onDeleteFolder,
 }) {
-  const nestedTree = useMemo(() => makeTree(tree || []), [tree]);
+  const nestedTree = useMemo(() => {
+    const visible = (tree || []).filter((item) => !item.name.startsWith("."));
+    return makeTree(visible);
+  }, [tree]);
   const favoriteItems = (favorites || []).slice(0, 12);
   const favoriteFolderSet = useMemo(
     () =>
