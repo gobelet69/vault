@@ -660,8 +660,6 @@ input::placeholder {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  overflow-x: auto;
-  overflow-y: visible;
   box-shadow: var(--shadow-sm);
 }
 .file-table {
