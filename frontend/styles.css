@@ -735,10 +735,12 @@ input::placeholder {
 /* ───────────────────────── File Table ───────────────────────── */
 
 .table-wrap {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
   box-shadow: var(--shadow-sm);
 }
 
@@ -783,9 +785,10 @@ input::placeholder {
 
 .file-table th:last-child,
 .file-table td:last-child {
-  width: 56px;
+  width: 80px;
   text-align: center;
   padding-right: 16px;
+  overflow: visible;
 }
 
 /* Zebra striping */
@@ -1097,6 +1100,7 @@ input::placeholder {
 
 .action-menu {
   position: relative;
+  z-index: 3;
 }
 
 .action-menu > summary {
@@ -1116,7 +1120,7 @@ input::placeholder {
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
-  z-index: 30;
+  z-index: 50;
   min-width: 180px;
   display: grid;
   gap: 1px;
