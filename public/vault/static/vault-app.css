@@ -270,18 +270,6 @@ input::placeholder {
   color: var(--text-muted);
   white-space: nowrap;
 }
-.bandwidth-stat {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.72rem;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  padding: 4px 10px;
-  background: var(--surface-soft);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-}
 .icon-btn {
   width: 36px;
   height: 36px;

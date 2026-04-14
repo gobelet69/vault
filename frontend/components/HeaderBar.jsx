@@ -8,7 +8,6 @@ import {
   Settings,
   LogOut,
   Layers,
-  Activity,
 } from "lucide-react";
 
 function formatBytes(bytes) {
@@ -64,7 +63,6 @@ export function HeaderBar({
 }) {
   const used = Number(quota?.used_bytes ?? 0) || 0;
   const max = Number(quota?.max_bytes ?? 10 * 1024 * 1024 * 1024) || 10 * 1024 * 1024 * 1024;
-  const bandwidth = Number(quota?.bandwidth_bytes ?? 0) || 0;
   const pct = Math.min(100, Math.round((used / Math.max(max, 1)) * 100));
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -141,13 +139,8 @@ export function HeaderBar({
               <div className="storage-fill" style={{ width: `${pct}%` }} />
             </div>
             <span className="storage-text">
-              {formatBytes(used)} / {formatBytes(max)}
+              {formatBytes(max - used)} available
             </span>
-          </div>
-
-          <div className="bandwidth-stat">
-            <Activity size={12} />
-            <span>{formatBytes(bandwidth)}</span>
           </div>
 
           <button type="button" className="icon-btn" onClick={onToggleTheme} aria-label="Toggle theme">

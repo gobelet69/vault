@@ -25557,17 +25557,6 @@ var createLucideIcon = (iconName, iconNode) => {
   return Component;
 };
 
-// node_modules/lucide-react/dist/esm/icons/activity.js
-var Activity = createLucideIcon("Activity", [
-  [
-    "path",
-    {
-      d: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
-      key: "169zse"
-    }
-  ]
-]);
-
 // node_modules/lucide-react/dist/esm/icons/chevron-down.js
 var ChevronDown = createLucideIcon("ChevronDown", [
   ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
@@ -26488,7 +26477,6 @@ function HeaderBar({
 }) {
   const used = Number(quota?.used_bytes ?? 0) || 0;
   const max = Number(quota?.max_bytes ?? 10 * 1024 * 1024 * 1024) || 10 * 1024 * 1024 * 1024;
-  const bandwidth = Number(quota?.bandwidth_bytes ?? 0) || 0;
   const pct = Math.min(100, Math.round(used / Math.max(max, 1) * 100));
   const [menuOpen, setMenuOpen] = (0, import_react18.useState)(false);
   const menuRef = (0, import_react18.useRef)(null);
@@ -26558,14 +26546,9 @@ function HeaderBar({
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "storage-indicator", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "storage-bar-wrap", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "storage-fill", style: { width: `${pct}%` } }) }),
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "storage-text", children: [
-            formatBytes2(used),
-            " / ",
-            formatBytes2(max)
+            formatBytes2(max - used),
+            " available"
           ] })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "bandwidth-stat", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Activity, { size: 12 }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: formatBytes2(bandwidth) })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", className: "icon-btn", onClick: onToggleTheme, "aria-label": "Toggle theme", children: theme === "dark" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Sun, { size: 18 }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Moon, { size: 18 }) }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: `user-wrap ${menuOpen ? "open" : ""}`, ref: menuRef, children: [
@@ -28155,7 +28138,6 @@ lucide-react/dist/esm/shared/src/utils.js:
 lucide-react/dist/esm/defaultAttributes.js:
 lucide-react/dist/esm/Icon.js:
 lucide-react/dist/esm/createLucideIcon.js:
-lucide-react/dist/esm/icons/activity.js:
 lucide-react/dist/esm/icons/chevron-down.js:
 lucide-react/dist/esm/icons/chevron-right.js:
 lucide-react/dist/esm/icons/cloud-upload.js:
