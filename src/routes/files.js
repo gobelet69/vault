@@ -174,6 +174,28 @@ async function listVisiblePathContents(env, user, currentPath, options = {}) {
     }),
   );
 
+  // Also include empty folders that only exist as .folder: metadata objects
+  const allFolderMeta = await listAllFolderMetadata(env);
+  const existingPaths = new Set(folderObjects.map((f) => f.path));
+  for (const meta of allFolderMeta) {
+    if (existingPaths.has(meta.path)) continue;
+    // Only include folders whose parent matches the current path
+    const expectedParent = meta.path.includes("/")
+      ? meta.path.split("/").slice(0, -1).join("/")
+      : "";
+    if (expectedParent !== cleanPath) continue;
+    folderObjects.push({
+      path: meta.path,
+      name: meta.path.replace(prefix, ""),
+      owner: meta.owner || "",
+      visibility: normalizeVisibility(meta.visibility),
+      allowedUsers: meta.allowedUsers || "",
+      color: meta.color || "#6366f1",
+      icon: meta.icon || "📁",
+      updatedAt: meta.updatedAt || null,
+    });
+  }
+
   const visibleFolders = folderObjects.filter((folder) => canAccessFolder(user, {
     uploader: folder.owner,
     visibility: folder.visibility,
