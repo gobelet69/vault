@@ -1091,7 +1091,7 @@ var require_react_development = __commonJS({
           var dispatcher = resolveDispatcher();
           return dispatcher.useReducer(reducer, initialArg, init2);
         }
-        function useRef4(initialValue) {
+        function useRef5(initialValue) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
@@ -1885,7 +1885,7 @@ var require_react_development = __commonJS({
         exports.useLayoutEffect = useLayoutEffect;
         exports.useMemo = useMemo7;
         exports.useReducer = useReducer;
-        exports.useRef = useRef4;
+        exports.useRef = useRef5;
         exports.useState = useState8;
         exports.useSyncExternalStore = useSyncExternalStore;
         exports.useTransition = useTransition;
@@ -25879,6 +25879,22 @@ function buildFileActions(file, handlers, showTrash) {
   }
   return actions;
 }
+function isImageFile(file) {
+  return file.previewType === "image";
+}
+function thumbnailUrl(file) {
+  return `/vault/file/${encodeURIComponent(file.key)}`;
+}
+function useDragFile(file) {
+  return {
+    draggable: true,
+    onDragStart(event) {
+      event.dataTransfer.setData("application/x-vault-file-key", file.key);
+      event.dataTransfer.setData("text/plain", file.displayName || file.key);
+      event.dataTransfer.effectAllowed = "move";
+    }
+  };
+}
 function FileTable({
   folders,
   files,
@@ -25897,7 +25913,8 @@ function FileTable({
   onDuplicate,
   onRestore,
   showTrash,
-  onUpload
+  onUpload,
+  onMoveFile
 }) {
   const compact = viewMode === "compact";
   const allKeys = files.map((file) => file.key);
@@ -26000,8 +26017,25 @@ function FileTable({
               return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
                 "div",
                 {
-                  className: "grid-card folder",
+                  className: "grid-card folder folder-drop-target",
                   onContextMenu: (event) => openContextMenu(event, "folder", folder),
+                  onDragOver: (event) => {
+                    if (event.dataTransfer.types.includes("application/x-vault-file-key")) {
+                      event.preventDefault();
+                      event.currentTarget.classList.add("drag-over");
+                    }
+                  },
+                  onDragLeave: (event) => {
+                    event.currentTarget.classList.remove("drag-over");
+                  },
+                  onDrop: (event) => {
+                    event.preventDefault();
+                    event.currentTarget.classList.remove("drag-over");
+                    const fileKey = event.dataTransfer.getData("application/x-vault-file-key");
+                    if (fileKey && onMoveFile) {
+                      onMoveFile(fileKey, folder.path);
+                    }
+                  },
                   children: [
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "grid-card-top", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "muted grid-kind", children: "Folder" }),
@@ -26023,17 +26057,20 @@ function FileTable({
                 { onPreview, onDownload, onOpenEditor, onShare, onToggleFavorite, onRename, onDuplicate, onRestore, onDelete },
                 showTrash
               );
+              const hasThumb = isImageFile(file);
               return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
                 "div",
                 {
-                  className: "grid-card",
+                  className: `grid-card ${hasThumb ? "has-thumbnail" : ""}`,
                   onContextMenu: (event) => openContextMenu(event, "file", file),
+                  ...useDragFile(file),
                   children: [
+                    hasThumb ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "grid-thumbnail", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { src: thumbnailUrl(file), alt: file.displayName, loading: "lazy" }) }) : null,
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "grid-card-top", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "muted grid-kind", children: "File" }),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActionMenu, { ariaLabel: `File actions for ${file.displayName}`, children: renderActions(actions) })
                     ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "grid-icon", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: `file-type-icon ${fileTypeClass(file)}`, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FileTypeIcon, { file, size: 20 }) }) }),
+                    !hasThumb ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "grid-icon", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: `file-type-icon ${fileTypeClass(file)}`, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FileTypeIcon, { file, size: 20 }) }) }) : null,
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "grid-title", title: file.displayName, children: file.displayName }),
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "grid-sub", children: [
                       formatBytes(file.size),
@@ -26125,20 +26162,45 @@ function FileTable({
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("tbody", { children: [
               folders.map((folder) => {
                 const actions = buildFolderActions(folder, { onNavigate, onShare, onToggleFavorite, onDeleteFolder });
-                return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("tr", { onContextMenu: (event) => openContextMenu(event, "folder", folder), children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", {}),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "file-name-cell", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "file-type-icon folder", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Folder, { size: 16 }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "file-name-info", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "link-btn file-name-primary", onClick: () => onNavigate(folder.path), children: folder.name }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "file-name-sub", children: folder.owner || "\u2014" })
-                    ] })
-                  ] }) }),
-                  !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `access-badge ${visibilityClass(folder.visibility)}`, children: visibilityLabel(folder.visibility) }) }) : null,
-                  !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", children: "\u2014" }) : null,
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", title: formatDate(folder.updatedAt), children: relativeTime(folder.updatedAt) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActionMenu, { ariaLabel: `Folder actions for ${folder.name}`, children: renderActions(actions) }) })
-                ] }, folder.path);
+                return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                  "tr",
+                  {
+                    className: "folder-drop-target",
+                    onContextMenu: (event) => openContextMenu(event, "folder", folder),
+                    onDragOver: (event) => {
+                      if (event.dataTransfer.types.includes("application/x-vault-file-key")) {
+                        event.preventDefault();
+                        event.currentTarget.classList.add("drag-over");
+                      }
+                    },
+                    onDragLeave: (event) => {
+                      event.currentTarget.classList.remove("drag-over");
+                    },
+                    onDrop: (event) => {
+                      event.preventDefault();
+                      event.currentTarget.classList.remove("drag-over");
+                      const fileKey = event.dataTransfer.getData("application/x-vault-file-key");
+                      if (fileKey && onMoveFile) {
+                        onMoveFile(fileKey, folder.path);
+                      }
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", {}),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "file-name-cell", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "file-type-icon folder", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Folder, { size: 16 }) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "file-name-info", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "link-btn file-name-primary", onClick: () => onNavigate(folder.path), children: folder.name }),
+                          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "file-name-sub", children: folder.owner || "\u2014" })
+                        ] })
+                      ] }) }),
+                      !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `access-badge ${visibilityClass(folder.visibility)}`, children: visibilityLabel(folder.visibility) }) }) : null,
+                      !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", children: "\u2014" }) : null,
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", title: formatDate(folder.updatedAt), children: relativeTime(folder.updatedAt) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActionMenu, { ariaLabel: `Folder actions for ${folder.name}`, children: renderActions(actions) }) })
+                    ]
+                  },
+                  folder.path
+                );
               }),
               files.map((file) => {
                 const actions = buildFileActions(
@@ -26147,50 +26209,63 @@ function FileTable({
                   showTrash
                 );
                 const isSelected = selectedKeys.includes(file.key);
-                return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("tr", { onContextMenu: (event) => openContextMenu(event, "file", file), children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                    "input",
-                    {
-                      type: "checkbox",
-                      className: `row-checkbox ${isSelected ? "visible" : ""}`,
-                      checked: isSelected,
-                      onChange: (event) => onToggleSelect(file.key, event.target.checked)
-                    }
-                  ) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "file-name-cell", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: `file-type-icon ${fileTypeClass(file)}`, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FileTypeIcon, { file }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "file-name-info", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "link-btn file-name-primary", onClick: () => onPreview(file.key), children: file.displayName }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "file-name-sub", children: file.owner || "\u2014" }),
-                      !compact && file.tags?.length ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tag-row", children: file.tags.map((tag) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
-                        "#",
-                        tag
-                      ] }, tag)) }) : null,
-                      compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "muted compact-meta", children: [
-                        formatBytes(file.size),
-                        " \xB7 ",
-                        visibilityLabel(file.visibility)
-                      ] }) : null
-                    ] })
-                  ] }) }),
-                  !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `access-badge ${visibilityClass(file.visibility)}`, children: visibilityLabel(file.visibility) }) }) : null,
-                  !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", children: formatBytes(file.size) }) : null,
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", title: formatDate(file.updatedAt), children: relativeTime(file.updatedAt) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "row-actions", children: [
-                    file.access?.canDownload !== false ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                      "button",
-                      {
-                        type: "button",
-                        className: "btn btn-sm btn-ghost row-actions-trigger",
-                        onClick: () => onDownload(file.key),
-                        "aria-label": "Download",
-                        title: "Download",
-                        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Download, { size: 15 })
-                      }
-                    ) : null,
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActionMenu, { ariaLabel: `File actions for ${file.displayName}`, children: renderActions(actions) })
-                  ] }) })
-                ] }, file.key);
+                return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                  "tr",
+                  {
+                    onContextMenu: (event) => openContextMenu(event, "file", file),
+                    draggable: true,
+                    onDragStart: (event) => {
+                      event.dataTransfer.setData("application/x-vault-file-key", file.key);
+                      event.dataTransfer.setData("text/plain", file.displayName || file.key);
+                      event.dataTransfer.effectAllowed = "move";
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                        "input",
+                        {
+                          type: "checkbox",
+                          className: `row-checkbox ${isSelected ? "visible" : ""}`,
+                          checked: isSelected,
+                          onChange: (event) => onToggleSelect(file.key, event.target.checked)
+                        }
+                      ) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "file-name-cell", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: `file-type-icon ${fileTypeClass(file)}`, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FileTypeIcon, { file }) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "file-name-info", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "link-btn file-name-primary", onClick: () => onPreview(file.key), children: file.displayName }),
+                          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "file-name-sub", children: file.owner || "\u2014" }),
+                          !compact && file.tags?.length ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tag-row", children: file.tags.map((tag) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
+                            "#",
+                            tag
+                          ] }, tag)) }) : null,
+                          compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "muted compact-meta", children: [
+                            formatBytes(file.size),
+                            " \xB7 ",
+                            visibilityLabel(file.visibility)
+                          ] }) : null
+                        ] })
+                      ] }) }),
+                      !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `access-badge ${visibilityClass(file.visibility)}`, children: visibilityLabel(file.visibility) }) }) : null,
+                      !compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", children: formatBytes(file.size) }) : null,
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { className: "cell-mono", title: formatDate(file.updatedAt), children: relativeTime(file.updatedAt) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "row-actions", children: [
+                        file.access?.canDownload !== false ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                          "button",
+                          {
+                            type: "button",
+                            className: "btn btn-sm btn-ghost row-actions-trigger",
+                            onClick: () => onDownload(file.key),
+                            "aria-label": "Download",
+                            title: "Download",
+                            children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Download, { size: 15 })
+                          }
+                        ) : null,
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActionMenu, { ariaLabel: `File actions for ${file.displayName}`, children: renderActions(actions) })
+                      ] }) })
+                    ]
+                  },
+                  file.key
+                );
               })
             ] })
           ] })
@@ -26255,17 +26330,34 @@ function openFavoriteItem(item, { onNavigate, onOpenFile }) {
   const parent = item.item_key.includes("/") ? item.item_key.split("/").slice(0, -1).join("/") : "";
   onNavigate(parent);
 }
-function TreeNode({ node, currentPath, onNavigate, onContextMenu, level = 0 }) {
+function TreeNode({ node, currentPath, onNavigate, onContextMenu, onDropFile, level = 0 }) {
   const isActive = currentPath === node.path;
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
       "button",
       {
         type: "button",
-        className: `tree-node ${isActive ? "active" : ""}`,
+        className: `tree-node folder-drop-target ${isActive ? "active" : ""}`,
         style: { paddingLeft: `${10 + level * 0}px` },
         onClick: () => onNavigate(node.path),
         onContextMenu: (event) => onContextMenu(event, node),
+        onDragOver: (event) => {
+          if (event.dataTransfer.types.includes("application/x-vault-file-key")) {
+            event.preventDefault();
+            event.currentTarget.classList.add("drag-over");
+          }
+        },
+        onDragLeave: (event) => {
+          event.currentTarget.classList.remove("drag-over");
+        },
+        onDrop: (event) => {
+          event.preventDefault();
+          event.currentTarget.classList.remove("drag-over");
+          const fileKey = event.dataTransfer.getData("application/x-vault-file-key");
+          if (fileKey && onDropFile) {
+            onDropFile(fileKey, node.path);
+          }
+        },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Folder, { size: 15, className: "tree-icon folder" }),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "tree-label", children: node.name }),
@@ -26280,6 +26372,7 @@ function TreeNode({ node, currentPath, onNavigate, onContextMenu, level = 0 }) {
         currentPath,
         onNavigate,
         onContextMenu,
+        onDropFile,
         level: level + 1
       },
       child.path
@@ -26294,7 +26387,8 @@ function FolderTree({
   onOpenFile,
   onShare,
   onToggleFavorite,
-  onDeleteFolder
+  onDeleteFolder,
+  onMoveFile
 }) {
   const nestedTree = (0, import_react17.useMemo)(() => {
     const visible = (tree || []).filter((item) => !item.name.startsWith("."));
@@ -26390,8 +26484,25 @@ function FolderTree({
         "button",
         {
           type: "button",
-          className: `tree-node ${currentPath ? "" : "active"}`,
+          className: `tree-node folder-drop-target ${currentPath ? "" : "active"}`,
           onClick: () => onNavigate(""),
+          onDragOver: (event) => {
+            if (event.dataTransfer.types.includes("application/x-vault-file-key")) {
+              event.preventDefault();
+              event.currentTarget.classList.add("drag-over");
+            }
+          },
+          onDragLeave: (event) => {
+            event.currentTarget.classList.remove("drag-over");
+          },
+          onDrop: (event) => {
+            event.preventDefault();
+            event.currentTarget.classList.remove("drag-over");
+            const fileKey = event.dataTransfer.getData("application/x-vault-file-key");
+            if (fileKey && onMoveFile) {
+              onMoveFile(fileKey, "");
+            }
+          },
           children: [
             /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(House, { size: 15, className: "tree-icon" }),
             /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "tree-label", children: "Home" })
@@ -26404,7 +26515,8 @@ function FolderTree({
           node,
           currentPath,
           onNavigate,
-          onContextMenu: (event, folderNode) => openContextMenu(event, buildFolderActions2(folderNode.path))
+          onContextMenu: (event, folderNode) => openContextMenu(event, buildFolderActions2(folderNode.path)),
+          onDropFile: onMoveFile
         },
         node.path
       ))
@@ -26479,16 +26591,22 @@ function HeaderBar({
   const max = Number(quota?.max_bytes ?? 10 * 1024 * 1024 * 1024) || 10 * 1024 * 1024 * 1024;
   const pct = Math.min(100, Math.round(used / Math.max(max, 1) * 100));
   const [menuOpen, setMenuOpen] = (0, import_react18.useState)(false);
+  const [appsOpen, setAppsOpen] = (0, import_react18.useState)(false);
   const menuRef = (0, import_react18.useRef)(null);
+  const appsRef = (0, import_react18.useRef)(null);
   (0, import_react18.useEffect)(() => {
     function closeOnOutsideClick(event) {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setMenuOpen(false);
       }
+      if (appsRef.current && !appsRef.current.contains(event.target)) {
+        setAppsOpen(false);
+      }
     }
     function closeOnEscape(event) {
       if (event.key === "Escape") {
         setMenuOpen(false);
+        setAppsOpen(false);
       }
     }
     document.addEventListener("click", closeOnOutsideClick);
@@ -26595,6 +26713,35 @@ function HeaderBar({
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(LogOut, { size: 15 }),
               "Sign Out"
             ] })
+          ] }) : null
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: `user-wrap ${appsOpen ? "open" : ""}`, ref: appsRef, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+            "button",
+            {
+              type: "button",
+              className: "user-btn",
+              onClick: () => setAppsOpen((open) => !open),
+              "aria-expanded": appsOpen,
+              children: [
+                "Apps",
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ChevronDown, { size: 14, className: "caret" })
+              ]
+            }
+          ),
+          appsOpen ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "user-dropdown", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "user-dropdown-header", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "uname", children: "Switch app" }),
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "role", children: "111iridescence webapps" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("a", { href: "/", className: "ddl", children: "\u{1F3E0} Hub" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("a", { href: "/vault", className: "ddl", children: "\u{1F512} Vault" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("a", { href: "/habits", className: "ddl", children: "\u{1F4C8} Habits" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("a", { href: "/todo", className: "ddl", children: "\u2705 Todo" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("a", { href: "/courses", className: "ddl", children: "\u{1F393} Courses" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("a", { href: "/editor", className: "ddl", children: "\u{1F4DD} Editor" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("a", { href: "/dashboard", className: "ddl", children: "\u{1F4CA} Dashboard" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("a", { href: "/feed", className: "ddl", children: "\u{1F4F0} Feed" })
           ] }) : null
         ] })
       ] })
@@ -27679,6 +27826,18 @@ function App() {
       setError(err.message);
     }
   }, [selectedKeys, clearSelection, fetchBootstrap, bootData.currentPath]);
+  const handleMoveFile = (0, import_react23.useCallback)(
+    async (fileKey, destinationFolder) => {
+      const fileName = fileKey.split("/").pop();
+      try {
+        await apiClient.moveFile(fileKey, destinationFolder, fileName);
+        fetchBootstrap(bootData.currentPath);
+      } catch (err) {
+        setError(err.message);
+      }
+    },
+    [fetchBootstrap, bootData.currentPath]
+  );
   const handleUpload = (0, import_react23.useCallback)(
     async (files) => {
       if (!files?.length) return;
@@ -27908,7 +28067,8 @@ function App() {
           onOpenFile: (key) => setPreviewKey(key),
           onShare: handleShare,
           onToggleFavorite: handleToggleFavorite,
-          onDeleteFolder: handleDeleteFolder
+          onDeleteFolder: handleDeleteFolder,
+          onMoveFile: handleMoveFile
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("main", { className: "content", children: activeContentTab === "audit" && bootData.user?.isAdmin ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("section", { className: "audit-tab", children: [
@@ -28023,6 +28183,7 @@ function App() {
             onDuplicate: (key) => apiClient.duplicateFile(key).then(() => fetchBootstrap(bootData.currentPath)).catch((err) => setError(err.message)),
             onRestore: (key) => apiClient.restoreTrash(key).then(() => fetchBootstrap(bootData.currentPath)).catch((err) => setError(err.message)),
             showTrash,
+            onMoveFile: handleMoveFile,
             onUpload: (files) => {
               if (files) {
                 handleUpload(files);
